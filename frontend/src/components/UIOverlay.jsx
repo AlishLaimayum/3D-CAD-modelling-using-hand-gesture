@@ -397,7 +397,7 @@ export function UIOverlay() {
                     </div>
                     <div>
                         <strong style={{ display: 'block', color: '#ffea00', fontSize: '12px' }}>PINCH GESTURE</strong>
-                        <span style={{ fontSize: '11px', color: '#aaa' }}>Pinch gesture to draw 3D lines.</span>
+                        <span style={{ fontSize: '11px', color: '#aaa' }}>Pinch gesture to draw 3D lines (only works when plane is locked).</span>
                     </div>
                 </div>
             </div>

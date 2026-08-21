@@ -31,7 +31,7 @@ class PlaneRotationController {
     // UPDATE ROTATION
     // ---------------------------------------------
 
-    update(dx, dy) {
+    update(dx, dy, camera) {
 
         // -----------------------------------------
         // Determine rotation axis ONLY ONCE
@@ -67,8 +67,9 @@ class PlaneRotationController {
         if (this.mode === 'HORIZONTAL') {
 
             // Ignore vertical movement completely
-            this.planeManager.rotateHorizontal(
-                dx * this.rotationSpeed
+            this.planeManager.rotateCameraRelativeHorizontal(
+                dx * this.rotationSpeed,
+                camera
             );
 
             return;
@@ -81,8 +82,9 @@ class PlaneRotationController {
         if (this.mode === 'VERTICAL') {
 
             // Ignore horizontal movement completely
-            this.planeManager.rotateVertical(
-                dy * this.rotationSpeed
+            this.planeManager.rotateCameraRelativeVertical(
+                dy * this.rotationSpeed,
+                camera
             );
 
             return;

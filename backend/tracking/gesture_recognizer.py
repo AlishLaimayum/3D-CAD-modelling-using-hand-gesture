@@ -81,19 +81,6 @@ class GestureRecognizer:
             hand_size = 0.001
 
         # ------------------------------------------------
-        # PINCH
-        # ------------------------------------------------
-
-        pinch_distance = self.distance_2d(
-            thumb_tip,
-            index_tip
-        )
-
-        pinch_ratio = pinch_distance / hand_size
-
-        raw_pinch = pinch_ratio < self.pinch_threshold
-
-        # ------------------------------------------------
         # FINGER EXTENSION
         # ------------------------------------------------
 
@@ -115,6 +102,27 @@ class GestureRecognizer:
         pinky_ratio = (
             self.distance_2d(pinky_tip, wrist)
             / hand_size
+        )
+
+        # ------------------------------------------------
+        # PINCH
+        # ------------------------------------------------
+
+        pinch_distance = self.distance_2d(
+            thumb_tip,
+            index_tip
+        )
+
+        pinch_ratio = pinch_distance / hand_size
+
+        # A pinch requires that the pinky and ring fingers are not folded into the palm.
+        # We use a threshold of 0.80 (slightly lower than self.folded_threshold of 0.85)
+        # to allow natural relaxation/slight curling of the other fingers during a pinch
+        # while preventing fist transitions from being misidentified.
+        raw_pinch = (
+            pinch_ratio < self.pinch_threshold
+            and pinky_ratio > 0.80
+            and ring_ratio > 0.80
         )
 
         # ------------------------------------------------

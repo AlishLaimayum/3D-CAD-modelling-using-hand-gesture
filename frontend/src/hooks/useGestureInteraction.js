@@ -147,7 +147,7 @@ export function useGestureInteraction() {
                     if (previous) {
                         const dx = data.swipe.x - previous.x;
                         const dy = data.swipe.y - previous.y;
-                        rotationController.update(dx, dy);
+                        rotationController.update(dx, dy, camera);
                         setPlaneRotation(planeManager.getRotation());
                     }
                     previousSwipeRef.current = { x: data.swipe.x, y: data.swipe.y };
