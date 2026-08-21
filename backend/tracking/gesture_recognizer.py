@@ -227,7 +227,10 @@ class GestureRecognizer:
         # ------------------------------------------------
 
         if stable_pinch:
-            self.state = GestureState.PINCH
+            if self.locked:
+                self.state = GestureState.PINCH
+            else:
+                self.state = GestureState.IDLE
 
         elif stable_fist:
             self.state = GestureState.FIST

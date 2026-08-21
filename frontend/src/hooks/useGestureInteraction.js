@@ -197,11 +197,7 @@ export function useGestureInteraction() {
                     const finalPos = applyMagneticSnap(smoothPosRef.current);
                     setCursorPosition(finalPos);
 
-                    if (data.state === 'PINCH') {
-                        // Auto lock plane while pinching
-                        setPlaneLocked(true);
-                        planeManager.setLocked(true);
-
+                    if (data.state === 'PINCH' && data.locked) {
                         if (!isGestureDrawingRef.current) {
                             isGestureDrawingRef.current = true;
                             startLine(finalPos);
@@ -214,7 +210,7 @@ export function useGestureInteraction() {
                         finalizeLine();
                         console.log('HAND GESTURE: Finalized Line');
                     }
-                } else if (isGestureDrawingRef.current && data.state !== 'PINCH') {
+                } else if (isGestureDrawingRef.current && !(data.state === 'PINCH' && data.locked)) {
                     isGestureDrawingRef.current = false;
                     finalizeLine();
                 }
