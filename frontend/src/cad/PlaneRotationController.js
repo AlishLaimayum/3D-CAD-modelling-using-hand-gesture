@@ -11,7 +11,7 @@ class PlaneRotationController {
         this.deadZone = 0.003;
 
         // Rotation sensitivity
-        this.rotationSpeed = 1.5;
+        this.rotationSpeed = 4.5;
 
         // Prevent accidental axis switching
         this.axisLocked = false;
