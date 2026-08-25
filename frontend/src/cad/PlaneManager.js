@@ -48,7 +48,7 @@ class PlaneManager {
     rotateCameraRelativeHorizontal(amount, camera) {
         if (this.locked) return;
         const cameraUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
-
+        
         const q = new THREE.Quaternion().setFromEuler(this.rotation);
         const qInc = new THREE.Quaternion().setFromAxisAngle(cameraUp, amount);
         q.premultiply(qInc);
@@ -58,7 +58,7 @@ class PlaneManager {
     rotateCameraRelativeVertical(amount, camera) {
         if (this.locked) return;
         const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
-
+        
         const q = new THREE.Quaternion().setFromEuler(this.rotation);
         const qInc = new THREE.Quaternion().setFromAxisAngle(cameraRight, amount);
         q.premultiply(qInc);

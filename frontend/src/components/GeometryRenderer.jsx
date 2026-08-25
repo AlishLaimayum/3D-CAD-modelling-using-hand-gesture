@@ -1,75 +1,78 @@
-/**
- * GeometryRenderer.jsx - Render Completed CAD Objects & Direct High-Frequency Interaction
- * 
- * 1. Efficiently renders completed CAD objects (Freehand curves, Lines, Rectangles).
- * 2. Uses memoized BufferGeometries to eliminate garbage collection on static objects.
- * 3. Mounts CursorRenderer and ActiveDrawingRenderer for zero-rerender active drawing.
- */
-
-import { useMemo, memo } from 'react';
-import * as THREE from 'three';
+import { useMemo } from 'react';
 import { useCadStore } from '../store/useCadStore';
-import { CursorRenderer } from './CursorRenderer';
-import { ActiveDrawingRenderer } from './ActiveDrawingRenderer';
+import * as THREE from 'three';
 
-/**
- * Individual CAD Object Mesh (Memoized for zero re-render overhead when new objects are added)
- */
-const CadObjectItem = memo(function CadObjectItem({ obj }) {
-    const geometry = useMemo(() => {
-        if (!obj) return null;
+export function GeometryRenderer() {
+    const lines = useCadStore((state) => state.lines);
+    const currentLine = useCadStore((state) => state.currentLine);
+    const cursorPosition = useCadStore((state) => state.cursorPosition);
+    const gestureState = useCadStore((state) => state.gestureState);
+    const isSnapped = useCadStore((state) => state.isSnapped);
+    const snappedPoint = useCadStore((state) => state.snappedPoint);
 
-        if (obj.points && obj.points.length > 0) {
-            const pts = obj.points.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
-            if (obj.type === 'RECTANGLE' && pts.length >= 4) {
-                // Ensure loop is closed
-                pts.push(new THREE.Vector3(pts[0].x, pts[0].y, pts[0].z));
-            }
-            return new THREE.BufferGeometry().setFromPoints(pts);
-        } else if (obj.start && obj.end) {
-            // Legacy line format
-            const pts = [
-                new THREE.Vector3(obj.start[0], obj.start[1], obj.start[2]),
-                new THREE.Vector3(obj.end[0], obj.end[1], obj.end[2])
+    // Create THREE geometries efficiently
+    const renderedLines = useMemo(() => {
+        return lines.map((line) => {
+            const points = [
+                new THREE.Vector3(...line.start),
+                new THREE.Vector3(...line.end)
             ];
-            return new THREE.BufferGeometry().setFromPoints(pts);
-        }
-        return null;
-    }, [obj]);
+            return new THREE.BufferGeometry().setFromPoints(points);
+        });
+    }, [lines]);
 
-    if (!geometry) return null;
-
-    const color = obj.color || 0x00e5ff;
-
-    return (
-        <line geometry={geometry}>
-            <lineBasicMaterial color={color} linewidth={2} />
-        </line>
-    );
-});
-
-export function GeometryRenderer({ cursorPosRef, snapInfoRef, activeDrawingRef, drawingPointsRef }) {
-    // Only subscribe to completed CAD objects list
-    const cadObjects = useCadStore((state) => state.cadObjects);
+    const currentLineGeometry = useMemo(() => {
+        if (!currentLine) return null;
+        const points = [
+            new THREE.Vector3(...currentLine.start),
+            new THREE.Vector3(...currentLine.end)
+        ];
+        return new THREE.BufferGeometry().setFromPoints(points);
+    }, [currentLine]);
 
     return (
         <group>
-            {/* Completed CAD Objects (Lines, Freehand curves, Rectangles) */}
-            {cadObjects.map((obj, idx) => (
-                <CadObjectItem key={obj.id || `cad-obj-${idx}`} obj={obj} />
+            {/* Completed Line Segments */}
+            {renderedLines.map((geom, idx) => (
+                <primitive object={new THREE.Line(geom, new THREE.LineBasicMaterial({ color: 0x00e5ff, linewidth: 3 }))} key={idx} />
             ))}
 
-            {/* Active In-Progress Live Drawing (Zero-re-render Three.js Buffer) */}
-            <ActiveDrawingRenderer 
-                activeDrawingRef={activeDrawingRef} 
-                drawingPointsRef={drawingPointsRef} 
-            />
+            {/* In-Progress Drawing Line */}
+            {currentLine && currentLineGeometry && (
+                <primitive 
+                    key={`curr-${currentLine.start.join('_')}-${currentLine.end.join('_')}`}
+                    object={new THREE.Line(currentLineGeometry, new THREE.LineBasicMaterial({ color: 0xffea00, linewidth: 3 }))} 
+                />
+            )}
 
-            {/* 3D Cursor & Magnetic Snap Target Indicator */}
-            <CursorRenderer 
-                cursorPosRef={cursorPosRef} 
-                snapInfoRef={snapInfoRef} 
-            />
+            {/* 3D Cursor & Magnetic Snap Marker */}
+            {cursorPosition && (
+                <group position={cursorPosition}>
+                    {/* Main Cursor Sphere */}
+                    <mesh>
+                        <sphereGeometry args={[isSnapped ? 0.12 : 0.09, 16, 16]} />
+                        <meshBasicMaterial 
+                            color={isSnapped ? '#00ff66' : (gestureState === 'PINCH' ? '#ff0055' : '#00f0ff')} 
+                        />
+                    </mesh>
+
+                    {/* Magnetic Lock Target Ring Visual */}
+                    {isSnapped && (
+                        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                            <ringGeometry args={[0.05, 0.08, 32]} />
+                            <meshBasicMaterial color="#00ff66" side={THREE.DoubleSide} />
+                        </mesh>
+                    )}
+                </group>
+            )}
+
+            {/* Highlight Snapped Vertex if separate */}
+            {isSnapped && snappedPoint && (
+                <mesh position={snappedPoint}>
+                    <sphereGeometry args={[0.09, 16, 16]} />
+                    <meshBasicMaterial color="#00ff66" wireframe />
+                </mesh>
+            )}
         </group>
     );
 }
