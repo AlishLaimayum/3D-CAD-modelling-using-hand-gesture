@@ -1,45 +1,115 @@
-import { useRef } from 'react';
+/**
+ * UIOverlay.jsx - 3D CAD Modeling Interface & Precision Controls HUD
+ * 
+ * Provides:
+ * - Granular Zustand selectors to prevent unnecessary rerenders
+ * - Drawing Mode Switcher (Freehand Curve, Straight Line, Rectangle)
+ * - Precision Snapping Controls (Magnetic Lock, Grid Snap, Angle Snap)
+ * - Full Undo / Redo with Command Pattern & Keyboard Shortcuts
+ * - Wavefront OBJ, DXF, JSON, and PNG Viewport Exporters
+ * - Real-Time Status & Performance Diagnostics HUD Toggle
+ */
+
+import { useRef, useEffect } from 'react';
 import { useCadStore } from '../store/useCadStore';
-import { 
-    exportToOBJ, 
-    exportToDXF, 
-    exportToJSON, 
-    exportSnapshotPNG 
+import {
+    exportToOBJ,
+    exportToDXF,
+    exportToJSON,
+    exportSnapshotPNG
 } from '../utils/exportUtils';
-import { 
-    Magnet, 
-    RotateCcw, 
-    Trash2, 
-    Upload, 
-    Camera, 
-    Box, 
-    FileCode, 
+import {
+    Magnet,
+    RotateCcw,
+    RotateCw,
+    Trash2,
+    Upload,
+    Camera,
+    Box,
+    FileCode,
     Layers,
     Compass,
     MoveUp,
-    MoveDown
+    MoveDown,
+    Pencil,
+    Minus,
+    Square,
+    Grid,
+    CornerDownRight,
+    Activity
 } from 'lucide-react';
 
 export function UIOverlay() {
+    // ---------------------------------------------
+    // GRANULAR ZUSTAND SELECTORS (ZERO UNNECESSARY RERENDERS)
+    // ---------------------------------------------
     const gestureState = useCadStore((state) => state.gestureState);
     const planeLocked = useCadStore((state) => state.planeLocked);
-    const cursorPosition = useCadStore((state) => state.cursorPosition);
-    const planeRotation = useCadStore((state) => state.planeRotation);
     const planePosition = useCadStore((state) => state.planePosition);
+    const planeRotation = useCadStore((state) => state.planeRotation);
     const activePreset = useCadStore((state) => state.activePreset);
-    const lines = useCadStore((state) => state.lines);
+    const cadObjects = useCadStore((state) => state.cadObjects);
+    const drawingMode = useCadStore((state) => state.drawingMode);
+
+    // Snapping configuration
     const magneticLockEnabled = useCadStore((state) => state.magneticLockEnabled);
+    const gridSnapEnabled = useCadStore((state) => state.gridSnapEnabled);
+    const angleSnapEnabled = useCadStore((state) => state.angleSnapEnabled);
     const isSnapped = useCadStore((state) => state.isSnapped);
-    
+    const snappedPoint = useCadStore((state) => state.snappedPoint);
+
+    // Undo / Redo
+    const canUndo = useCadStore((state) => state.canUndo);
+    const canRedo = useCadStore((state) => state.canRedo);
+    const diagnosticsEnabled = useCadStore((state) => state.diagnosticsEnabled);
+
+    // Store Actions
+    const setDrawingMode = useCadStore((state) => state.setDrawingMode);
     const toggleMagneticLock = useCadStore((state) => state.toggleMagneticLock);
-    const undoLine = useCadStore((state) => state.undoLine);
-    const clearLines = useCadStore((state) => state.clearLines);
-    const setLines = useCadStore((state) => state.setLines);
+    const toggleGridSnap = useCadStore((state) => state.toggleGridSnap);
+    const toggleAngleSnap = useCadStore((state) => state.toggleAngleSnap);
+    const undo = useCadStore((state) => state.undo);
+    const redo = useCadStore((state) => state.redo);
+    const clearCADObjects = useCadStore((state) => state.clearCADObjects);
+    const setCADObjects = useCadStore((state) => state.setCADObjects);
     const setPresetPlane = useCadStore((state) => state.setPresetPlane);
     const setPlaneOffset = useCadStore((state) => state.setPlaneOffset);
+    const toggleDiagnostics = useCadStore((state) => state.toggleDiagnostics);
 
     const fileInputRef = useRef(null);
 
+    // ---------------------------------------------
+    // GLOBAL KEYBOARD SHORTCUTS
+    // ---------------------------------------------
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            // Undo: Ctrl+Z or Cmd+Z
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                undo();
+            }
+            // Redo: Ctrl+Y or Ctrl+Shift+Z
+            else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+                e.preventDefault();
+                redo();
+            }
+            // Mode shortcuts: 1=Freehand, 2=Line, 3=Rectangle
+            else if (e.key === '1') {
+                setDrawingMode('FREEHAND');
+            } else if (e.key === '2') {
+                setDrawingMode('LINE');
+            } else if (e.key === '3') {
+                setDrawingMode('RECTANGLE');
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [undo, redo, setDrawingMode]);
+
+    // Handle Project JSON File Import
     const handleImportJSON = (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -48,107 +118,436 @@ export function UIOverlay() {
         reader.onload = (event) => {
             try {
                 const data = JSON.parse(event.target.result);
-                if (data.lines && Array.isArray(data.lines)) {
-                    setLines(data.lines);
-                    alert(`Loaded project with ${data.lines.length} line segment(s).`);
+                if (data.cadObjects && Array.isArray(data.cadObjects)) {
+                    setCADObjects(data.cadObjects);
+                    alert(`Loaded CAD project with ${data.cadObjects.length} object(s).`);
+                } else if (data.lines && Array.isArray(data.lines)) {
+                    // Backwards-compatible line import
+                    setCADObjects(data.lines);
+                    alert(`Loaded legacy project with ${data.lines.length} segment(s).`);
                 } else {
-                    alert('Invalid JSON structure: missing lines array.');
+                    alert('Invalid JSON structure: missing cadObjects array.');
                 }
-            } catch (err) {
+            } catch (_err) {
+                console.error('JSON parse error:', _err);
                 alert('Error parsing JSON file.');
             }
         };
         reader.readAsText(file);
     };
 
+    // Calculate total stored points
+    let totalPoints = 0;
+    cadObjects.forEach((obj) => {
+        if (obj.points) totalPoints += obj.points.length;
+        else if (obj.start && obj.end) totalPoints += 2;
+    });
+
     return (
         <>
-            {/* Status Panel (Top Left) */}
-            <div style={{ 
-                position: 'absolute', 
-                top: 20, 
-                left: 20, 
-                color: 'white', 
-                background: 'rgba(15, 18, 28, 0.85)',
-                backdropFilter: 'blur(12px)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                padding: '20px',
-                borderRadius: '12px',
-                fontFamily: 'monospace',
+            {/* ---------------------------------------------
+                STATUS PANEL (TOP LEFT)
+            --------------------------------------------- */}
+            <div style={{
+                position: 'absolute',
+                top: 20,
+                left: 20,
+                color: 'white',
+                background: 'rgba(15, 18, 28, 0.88)',
+                backdropFilter: 'blur(16px)',
+                border: '1px solid rgba(0, 240, 255, 0.25)',
+                padding: '18px 20px',
+                borderRadius: '14px',
+                fontFamily: 'Consolas, Monaco, "Courier New", monospace',
                 pointerEvents: 'auto',
                 zIndex: 10,
                 minWidth: '260px',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+                boxShadow: '0 10px 35px rgba(0,0,0,0.5)'
             }}>
-                <h3 style={{
-                    marginTop: 0, 
-                    marginBottom: '12px',
-                    borderBottom: '1px solid rgba(255,255,255,0.15)', 
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    borderBottom: '1px solid rgba(255,255,255,0.15)',
                     paddingBottom: '8px',
-                    color: '#00f0ff',
-                    fontSize: '15px',
-                    letterSpacing: '1px'
+                    marginBottom: '12px'
                 }}>
-                    3D MODELING STATUS
-                </h3>
-                
-                <div style={{ margin: '6px 0', fontSize: '13px' }}>
+                    <h3 style={{
+                        margin: 0,
+                        color: '#00f0ff',
+                        fontSize: '14px',
+                        letterSpacing: '1px',
+                        fontWeight: '700'
+                    }}>
+                        3D CAD STATUS
+                    </h3>
+                    <button
+                        onClick={toggleDiagnostics}
+                        title="Toggle Performance Diagnostics HUD [D]"
+                        style={{
+                            background: diagnosticsEnabled ? 'rgba(0,240,255,0.2)' : 'transparent',
+                            border: '1px solid rgba(0,240,255,0.4)',
+                            color: '#00f0ff',
+                            borderRadius: '6px',
+                            padding: '3px 6px',
+                            fontSize: '10px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                        }}
+                    >
+                        <Activity size={12} />
+                        <span>HUD</span>
+                    </button>
+                </div>
+
+                <div style={{ margin: '6px 0', fontSize: '12px' }}>
                     <strong>Active Plane:</strong> <span style={{ color: '#00ffff', fontWeight: 'bold' }}>{activePreset} PLANE</span>
                 </div>
 
-                <div style={{ margin: '6px 0', fontSize: '13px' }}>
+                <div style={{ margin: '6px 0', fontSize: '12px' }}>
                     <strong>Plane Elevation (Y):</strong> <span style={{ color: '#ffea00', fontWeight: 'bold' }}>{planePosition[1].toFixed(2)}</span>
                 </div>
 
-                <div style={{ margin: '6px 0', fontSize: '13px' }}>
-                    <strong>Gesture:</strong> <span style={{ color: '#00ffff', fontWeight: 'bold' }}>{gestureState}</span>
-                </div>
-                
-                <div style={{ margin: '6px 0', fontSize: '13px' }}>
-                    <strong>Plane Lock:</strong> <span style={{ color: planeLocked ? '#ff4455' : '#00ff66', fontWeight: 'bold' }}>{planeLocked ? 'LOCKED' : 'UNLOCKED'}</span>
-                </div>
-
-                <div style={{ margin: '6px 0', fontSize: '13px' }}>
-                    <strong>Magnetic Snap:</strong> <span style={{ color: magneticLockEnabled ? (isSnapped ? '#00ff66' : '#ffea00') : '#888888', fontWeight: 'bold' }}>
-                        {magneticLockEnabled ? (isSnapped ? 'SNAP LOCKED 🧲' : 'ACTIVE') : 'DISABLED'}
+                <div style={{ margin: '6px 0', fontSize: '12px' }}>
+                    <strong>Gesture:</strong> <span style={{
+                        color: gestureState === 'DRAWING' || gestureState === 'PINCH' ? '#ff0055' : (gestureState === 'ROTATING' ? '#ffea00' : '#00ffff'),
+                        fontWeight: 'bold'
+                    }}>
+                        {gestureState}
                     </span>
                 </div>
 
-                <div style={{ margin: '6px 0', fontSize: '13px' }}>
-                    <strong>3D Segments:</strong> <span style={{ color: '#00ffff' }}>{lines.length}</span>
+                <div style={{ margin: '6px 0', fontSize: '12px' }}>
+                    <strong>Plane Lock:</strong> <span style={{ color: planeLocked ? '#ff4455' : '#00ff66', fontWeight: 'bold' }}>
+                        {planeLocked ? 'LOCKED (Draw Active)' : 'UNLOCKED (Rotate Active)'}
+                    </span>
                 </div>
 
-                {cursorPosition && (
-                    <div style={{ margin: '8px 0', fontSize: '12px', color: '#aaa' }}>
-                        <strong>World 3D Pos:</strong><br/>
-                        X: {cursorPosition[0].toFixed(2)} Y: {cursorPosition[1].toFixed(2)} Z: {cursorPosition[2].toFixed(2)}
+                <div style={{ margin: '6px 0', fontSize: '12px' }}>
+                    <strong>Tool Mode:</strong> <span style={{ color: '#ffea00', fontWeight: 'bold' }}>{drawingMode}</span>
+                </div>
+
+                <div style={{ margin: '6px 0', fontSize: '12px' }}>
+                    <strong>Precision Snap:</strong> <span style={{ color: isSnapped ? '#00ff66' : '#888888', fontWeight: 'bold' }}>
+                        {isSnapped ? 'SNAP LOCKED 🧲' : (magneticLockEnabled ? 'ACTIVE' : 'DISABLED')}
+                    </span>
+                </div>
+
+                <div style={{ margin: '6px 0', fontSize: '12px' }}>
+                    <strong>CAD Objects:</strong> <span style={{ color: '#00ffff', fontWeight: 'bold' }}>{cadObjects.length}</span>
+                    <span style={{ color: '#888', fontSize: '11px', marginLeft: '6px' }}>({totalPoints} pts)</span>
+                </div>
+
+                {isSnapped && snappedPoint && (
+                    <div style={{ marginTop: '8px', padding: '6px 8px', background: 'rgba(0,255,102,0.1)', borderRadius: '6px', fontSize: '11px', color: '#00ff66' }}>
+                        📍 Snapped: [{snappedPoint[0].toFixed(2)}, {snappedPoint[1].toFixed(2)}, {snappedPoint[2].toFixed(2)}]
                     </div>
                 )}
             </div>
 
-            {/* 3D Plane Selector Bar (Bottom Center) */}
+            {/* ---------------------------------------------
+                DRAWING TOOL SELECTOR & SNAPPING BAR (TOP CENTER)
+            --------------------------------------------- */}
             <div style={{
                 position: 'absolute',
-                bottom: 24,
+                top: 20,
                 left: '50%',
                 transform: 'translateX(-50%)',
                 background: 'rgba(15, 18, 28, 0.9)',
                 backdropFilter: 'blur(16px)',
                 border: '1px solid rgba(0, 240, 255, 0.3)',
                 borderRadius: '30px',
-                padding: '10px 20px',
+                padding: '8px 18px',
                 display: 'flex',
                 alignItems: 'center',
+                gap: '8px',
+                zIndex: 20,
+                boxShadow: '0 10px 40px rgba(0,0,0,0.6)'
+            }}>
+                {/* Freehand Tool */}
+                <button
+                    onClick={() => setDrawingMode('FREEHAND')}
+                    title="Freehand Curve Tool [1] - Preserves all drawn coordinates"
+                    style={toolBtnStyle(drawingMode === 'FREEHAND')}
+                >
+                    <Pencil size={15} />
+                    <span>Freehand</span>
+                </button>
+
+                {/* Line Tool */}
+                <button
+                    onClick={() => setDrawingMode('LINE')}
+                    title="Straight Line Tool [2]"
+                    style={toolBtnStyle(drawingMode === 'LINE')}
+                >
+                    <Minus size={15} />
+                    <span>Line</span>
+                </button>
+
+                {/* Rectangle Tool */}
+                <button
+                    onClick={() => setDrawingMode('RECTANGLE')}
+                    title="Rectangle Tool [3]"
+                    style={toolBtnStyle(drawingMode === 'RECTANGLE')}
+                >
+                    <Square size={15} />
+                    <span>Rectangle</span>
+                </button>
+
+                <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
+
+                {/* Magnetic Snap Toggle */}
+                <button
+                    onClick={toggleMagneticLock}
+                    title="Toggle Magnetic Snap Lock (Vertex/Midpoint)"
+                    style={{
+                        ...btnStyle,
+                        background: magneticLockEnabled ? 'rgba(0, 198, 255, 0.25)' : 'transparent',
+                        borderColor: magneticLockEnabled ? '#00c6ff' : 'rgba(255,255,255,0.15)',
+                        color: magneticLockEnabled ? '#00f0ff' : '#888'
+                    }}
+                >
+                    <Magnet size={15} />
+                    <span>Magnet</span>
+                </button>
+
+                {/* Grid Snap Toggle */}
+                <button
+                    onClick={toggleGridSnap}
+                    title="Toggle Grid Coordinate Snap"
+                    style={{
+                        ...btnStyle,
+                        background: gridSnapEnabled ? 'rgba(0, 255, 102, 0.2)' : 'transparent',
+                        borderColor: gridSnapEnabled ? '#00ff66' : 'rgba(255,255,255,0.15)',
+                        color: gridSnapEnabled ? '#00ff66' : '#888'
+                    }}
+                >
+                    <Grid size={15} />
+                    <span>Grid</span>
+                </button>
+
+                {/* Angle Snap Toggle */}
+                <button
+                    onClick={toggleAngleSnap}
+                    title="Toggle 45°/90° Angle Snap"
+                    style={{
+                        ...btnStyle,
+                        background: angleSnapEnabled ? 'rgba(255, 234, 0, 0.2)' : 'transparent',
+                        borderColor: angleSnapEnabled ? '#ffea00' : 'rgba(255,255,255,0.15)',
+                        color: angleSnapEnabled ? '#ffea00' : '#888'
+                    }}
+                >
+                    <CornerDownRight size={15} />
+                    <span>45° Snap</span>
+                </button>
+
+                <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
+
+                {/* Undo / Redo */}
+                <button
+                    onClick={undo}
+                    disabled={!canUndo}
+                    title="Undo [Ctrl+Z]"
+                    style={{ ...btnStyle, opacity: canUndo ? 1 : 0.35, padding: '7px 10px' }}
+                >
+                    <RotateCcw size={15} />
+                </button>
+
+                <button
+                    onClick={redo}
+                    disabled={!canRedo}
+                    title="Redo [Ctrl+Y]"
+                    style={{ ...btnStyle, opacity: canRedo ? 1 : 0.35, padding: '7px 10px' }}
+                >
+                    <RotateCw size={15} />
+                </button>
+
+                {/* Clear All */}
+                <button
+                    onClick={clearCADObjects}
+                    disabled={cadObjects.length === 0}
+                    title="Clear all CAD geometry"
+                    style={{
+                        ...btnStyle,
+                        background: 'rgba(255,68,85,0.15)',
+                        borderColor: 'rgba(255,68,85,0.4)',
+                        color: '#ff4455',
+                        opacity: cadObjects.length === 0 ? 0.35 : 1,
+                        padding: '7px 10px'
+                    }}
+                >
+                    <Trash2 size={15} />
+                </button>
+            </div>
+
+            {/* ---------------------------------------------
+                EXPORT / IMPORT TOOLBAR (TOP RIGHT INSTRUCTION AREA)
+            --------------------------------------------- */}
+            <div style={{
+                position: 'absolute',
+                top: 20,
+                right: 20,
+                display: 'flex',
+                flexDirection: 'column',
                 gap: '12px',
+                zIndex: 10
+            }}>
+                {/* Exporter Buttons */}
+                <div style={{
+                    background: 'rgba(15, 18, 28, 0.88)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: '14px',
+                    padding: '10px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+                }}>
+                    <button
+                        onClick={() => exportToOBJ(cadObjects, planeRotation)}
+                        title="Export Wavefront 3D OBJ file"
+                        style={btnStyle}
+                    >
+                        <Box size={15} color="#00ffff" />
+                        <span>OBJ</span>
+                    </button>
+
+                    <button
+                        onClick={() => exportToDXF(cadObjects)}
+                        title="Export AutoCAD DXF file"
+                        style={btnStyle}
+                    >
+                        <Layers size={15} color="#00ff66" />
+                        <span>DXF</span>
+                    </button>
+
+                    <button
+                        onClick={() => exportToJSON(cadObjects, planeRotation)}
+                        title="Export CAD Project JSON"
+                        style={btnStyle}
+                    >
+                        <FileCode size={15} color="#ffea00" />
+                        <span>JSON</span>
+                    </button>
+
+                    <button
+                        onClick={() => exportSnapshotPNG()}
+                        title="Download 3D Viewport PNG Snapshot"
+                        style={btnStyle}
+                    >
+                        <Camera size={15} color="#ff44aa" />
+                        <span>PNG</span>
+                    </button>
+
+                    <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.2)' }} />
+
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Load CAD Project JSON"
+                        style={btnStyle}
+                    >
+                        <Upload size={15} />
+                        <span>Load</span>
+                    </button>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleImportJSON}
+                        accept=".json"
+                        style={{ display: 'none' }}
+                    />
+                </div>
+
+                {/* Gesture & Quick Help Guide */}
+                <div style={{
+                    color: 'white',
+                    background: 'rgba(15, 18, 28, 0.88)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    padding: '16px 18px',
+                    borderRadius: '14px',
+                    fontFamily: 'sans-serif',
+                    width: '280px',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+                }}>
+                    <h3 style={{
+                        marginTop: 0,
+                        marginBottom: '10px',
+                        borderBottom: '1px solid rgba(255,255,255,0.15)',
+                        paddingBottom: '6px',
+                        fontFamily: 'monospace',
+                        color: '#00f0ff',
+                        fontSize: '13px',
+                        letterSpacing: '1px'
+                    }}>
+                        GESTURE CAD GUIDE
+                    </h3>
+
+                    {/* Mouse Draw */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '15px', width: '26px' }}>🖱️</span>
+                        <div>
+                            <strong style={{ display: 'block', color: '#00ffff', fontSize: '11px' }}>MOUSE DRAW</strong>
+                            <span style={{ fontSize: '10px', color: '#aaa' }}>Click & Drag to draw on 3D plane.</span>
+                        </div>
+                    </div>
+
+                    {/* Open Palm */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '15px', width: '26px' }}>✋</span>
+                        <div>
+                            <strong style={{ display: 'block', color: '#00ffff', fontSize: '11px' }}>OPEN PALM</strong>
+                            <span style={{ fontSize: '10px', color: '#aaa' }}>Swipe gesture to rotate 3D plane.</span>
+                        </div>
+                    </div>
+
+                    {/* Fist */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '15px', width: '26px' }}>✊</span>
+                        <div>
+                            <strong style={{ display: 'block', color: '#ffaa00', fontSize: '11px' }}>FIST GESTURE</strong>
+                            <span style={{ fontSize: '10px', color: '#aaa' }}>Lock / Unlock active plane.</span>
+                        </div>
+                    </div>
+
+                    {/* Pinch */}
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span style={{ fontSize: '15px', width: '26px' }}>🤏</span>
+                        <div>
+                            <strong style={{ display: 'block', color: '#ffea00', fontSize: '11px' }}>PINCH GESTURE</strong>
+                            <span style={{ fontSize: '10px', color: '#aaa' }}>Pinch to draw when plane is locked.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* ---------------------------------------------
+                3D PLANE SELECTOR BAR (BOTTOM CENTER)
+            --------------------------------------------- */}
+            <div style={{
+                position: 'absolute',
+                bottom: 24,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'rgba(15, 18, 28, 0.92)',
+                backdropFilter: 'blur(16px)',
+                border: '1px solid rgba(0, 240, 255, 0.35)',
+                borderRadius: '30px',
+                padding: '8px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
                 zIndex: 20,
                 boxShadow: '0 10px 40px rgba(0,240,255,0.2)'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#00f0ff', fontSize: '13px', fontWeight: 'bold', marginRight: '4px' }}>
-                    <Compass size={18} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#00f0ff', fontSize: '12px', fontWeight: 'bold', marginRight: '2px' }}>
+                    <Compass size={16} />
                     <span>3D PLANE:</span>
                 </div>
 
-                {/* Top Plane */}
                 <button
                     onClick={() => setPresetPlane('TOP')}
                     style={presetBtnStyle(activePreset === 'TOP')}
@@ -156,7 +555,6 @@ export function UIOverlay() {
                     TOP (XZ)
                 </button>
 
-                {/* Front Plane */}
                 <button
                     onClick={() => setPresetPlane('FRONT')}
                     style={presetBtnStyle(activePreset === 'FRONT')}
@@ -164,7 +562,6 @@ export function UIOverlay() {
                     FRONT (XY)
                 </button>
 
-                {/* Side Plane */}
                 <button
                     onClick={() => setPresetPlane('SIDE')}
                     style={presetBtnStyle(activePreset === 'SIDE')}
@@ -172,7 +569,6 @@ export function UIOverlay() {
                     SIDE (YZ)
                 </button>
 
-                {/* Isometric Plane */}
                 <button
                     onClick={() => setPresetPlane('ISO')}
                     style={presetBtnStyle(activePreset === 'ISO')}
@@ -180,16 +576,15 @@ export function UIOverlay() {
                     ISO (45°)
                 </button>
 
-                <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)' }} />
+                <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)' }} />
 
-                {/* Elevation Controls */}
-                <span style={{ fontSize: '12px', color: '#aaa', fontWeight: '600' }}>HEIGHT:</span>
+                <span style={{ fontSize: '11px', color: '#aaa', fontWeight: '600' }}>HEIGHT:</span>
                 <button
                     onClick={() => setPlaneOffset(planePosition[1] + 1)}
                     title="Raise Plane Height (+1 Y)"
                     style={btnStyle}
                 >
-                    <MoveUp size={14} color="#00ff66" />
+                    <MoveUp size={13} color="#00ff66" />
                     <span>+1</span>
                 </button>
 
@@ -198,208 +593,17 @@ export function UIOverlay() {
                     title="Lower Plane Height (-1 Y)"
                     style={btnStyle}
                 >
-                    <MoveDown size={14} color="#ffea00" />
+                    <MoveDown size={13} color="#ffea00" />
                     <span>-1</span>
                 </button>
 
                 <button
                     onClick={() => setPlaneOffset(0)}
                     title="Reset Plane Height to 0"
-                    style={{ ...btnStyle, fontSize: '11px' }}
+                    style={{ ...btnStyle, fontSize: '11px', padding: '6px 10px' }}
                 >
-                    Reset Y=0
+                    Y=0
                 </button>
-            </div>
-
-            {/* Main Action Bar (Top Center) */}
-            <div style={{
-                position: 'absolute',
-                top: 20,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: 'rgba(15, 18, 28, 0.85)',
-                backdropFilter: 'blur(12px)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '30px',
-                padding: '8px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                zIndex: 20,
-                boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
-            }}>
-                {/* Magnetic Lock Button */}
-                <button
-                    onClick={toggleMagneticLock}
-                    title="Toggle Magnetic Snap Lock (Connect close vertices)"
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '8px 14px',
-                        borderRadius: '20px',
-                        border: 'none',
-                        background: magneticLockEnabled ? 'linear-gradient(135deg, #00c6ff, #0072ff)' : '#2a2e3d',
-                        color: 'white',
-                        fontWeight: '600',
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        boxShadow: magneticLockEnabled ? '0 0 12px rgba(0,198,255,0.4)' : 'none'
-                    }}
-                >
-                    <Magnet size={16} />
-                    <span>Magnet Lock: {magneticLockEnabled ? 'ON' : 'OFF'}</span>
-                </button>
-
-                <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)' }} />
-
-                {/* Exporters */}
-                <button
-                    onClick={() => exportToOBJ(lines, planeRotation)}
-                    title="Export Wavefront 3D OBJ file"
-                    style={btnStyle}
-                >
-                    <Box size={16} color="#00ffff" />
-                    <span>OBJ</span>
-                </button>
-
-                <button
-                    onClick={() => exportToDXF(lines)}
-                    title="Export AutoCAD DXF file"
-                    style={btnStyle}
-                >
-                    <Layers size={16} color="#00ff66" />
-                    <span>DXF</span>
-                </button>
-
-                <button
-                    onClick={() => exportToJSON(lines, planeRotation)}
-                    title="Export CAD Project JSON"
-                    style={btnStyle}
-                >
-                    <FileCode size={16} color="#ffea00" />
-                    <span>JSON</span>
-                </button>
-
-                <button
-                    onClick={() => exportSnapshotPNG()}
-                    title="Download 3D Viewport PNG Snapshot"
-                    style={btnStyle}
-                >
-                    <Camera size={16} color="#ff44aa" />
-                    <span>PNG</span>
-                </button>
-
-                <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)' }} />
-
-                {/* Import */}
-                <button
-                    onClick={() => fileInputRef.current?.click()}
-                    title="Load JSON Project"
-                    style={btnStyle}
-                >
-                    <Upload size={16} />
-                    <span>Load</span>
-                </button>
-                <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleImportJSON} 
-                    accept=".json" 
-                    style={{ display: 'none' }} 
-                />
-
-                {/* Undo & Clear */}
-                <button
-                    onClick={undoLine}
-                    disabled={lines.length === 0}
-                    title="Undo last line segment"
-                    style={{ ...btnStyle, opacity: lines.length === 0 ? 0.4 : 1 }}
-                >
-                    <RotateCcw size={16} />
-                </button>
-
-                <button
-                    onClick={clearLines}
-                    disabled={lines.length === 0}
-                    title="Clear all lines"
-                    style={{ ...btnStyle, background: 'rgba(255,68,85,0.2)', color: '#ff4455', opacity: lines.length === 0 ? 0.4 : 1 }}
-                >
-                    <Trash2 size={16} />
-                </button>
-            </div>
-
-            {/* Instruction Panel (Top Right) */}
-            <div style={{ 
-                position: 'absolute', 
-                top: 20, 
-                right: 20, 
-                color: 'white', 
-                background: 'rgba(15, 18, 28, 0.85)',
-                backdropFilter: 'blur(12px)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                padding: '20px',
-                borderRadius: '12px',
-                fontFamily: 'sans-serif',
-                pointerEvents: 'auto',
-                zIndex: 10,
-                width: '300px',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
-            }}>
-                <h3 style={{
-                    marginTop: 0, 
-                    marginBottom: '12px',
-                    borderBottom: '1px solid rgba(255,255,255,0.15)', 
-                    paddingBottom: '8px',
-                    fontFamily: 'monospace',
-                    color: '#00f0ff',
-                    fontSize: '15px',
-                    letterSpacing: '1px'
-                }}>
-                    3D MODELING GUIDE
-                </h3>
-                
-                <p style={{ fontSize: '11px', color: '#aaa', margin: '0 0 12px 0', lineHeight: '1.4' }}>
-                    Select a 3D Plane preset (Top, Front, Side, ISO) or swipe with Open Palm to sketch across multiple 3D planes to construct 3D wireframe models!
-                </p>
-
-                {/* Mouse Draw */}
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', marginRight: '10px', background: '#1e2436', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '16px' }}>🖱️</span>
-                    </div>
-                    <div>
-                        <strong style={{ display: 'block', color: '#00ffff', fontSize: '12px' }}>MOUSE DRAW</strong>
-                        <span style={{ fontSize: '11px', color: '#aaa' }}>Click & Drag to draw lines on active 3D plane.</span>
-                    </div>
-                </div>
-
-                {/* Open Palm */}
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', marginRight: '10px', background: '#1e2436', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00ffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M18 11V6a2 2 0 0 0-4 0v4"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V3a2 2 0 0 0-4 0v9"/><path d="M18 11.5v2.27c0 .86-.3 1.7-.85 2.36l-4.25 5.11A2 2 0 0 1 11.37 22H8.5a4 4 0 0 1-3.92-3.23l-.7-3.5a2 2 0 0 1 1.04-2.18l2.9-1.45a1.99 1.99 0 0 1 2.18.25V9"/>
-                        </svg>
-                    </div>
-                    <div>
-                        <strong style={{ display: 'block', color: '#00ffff', fontSize: '12px' }}>OPEN PALM</strong>
-                        <span style={{ fontSize: '11px', color: '#aaa' }}>Swipe gesture to rotate active 3D plane.</span>
-                    </div>
-                </div>
-
-                {/* Pinch */}
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <div style={{ width: '32px', height: '32px', marginRight: '10px', background: '#1e2436', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffea00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="2" fill="#ffea00"/><path d="M12 2L12 10"/><path d="M12 14L12 22"/><path d="M2 12L10 12"/><path d="M14 12L22 12"/>
-                        </svg>
-                    </div>
-                    <div>
-                        <strong style={{ display: 'block', color: '#ffea00', fontSize: '12px' }}>PINCH GESTURE</strong>
-                        <span style={{ fontSize: '11px', color: '#aaa' }}>Pinch gesture to draw 3D lines (only works when plane is locked).</span>
-                    </div>
-                </div>
             </div>
         </>
     );
@@ -409,9 +613,9 @@ const btnStyle = {
     display: 'flex',
     alignItems: 'center',
     gap: '5px',
-    padding: '8px 12px',
+    padding: '7px 12px',
     borderRadius: '16px',
-    border: '1px solid rgba(255,255,255,0.12)',
+    border: '1px solid rgba(255,255,255,0.15)',
     background: '#1a1f2c',
     color: '#eee',
     fontSize: '12px',
@@ -420,15 +624,31 @@ const btnStyle = {
     transition: 'all 0.15s ease'
 };
 
+const toolBtnStyle = (active) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+    padding: '7px 13px',
+    borderRadius: '16px',
+    border: active ? '1px solid #00f0ff' : '1px solid rgba(255,255,255,0.15)',
+    background: active ? 'linear-gradient(135deg, #00f0ff, #0072ff)' : '#1a1f2c',
+    color: active ? '#ffffff' : '#ccc',
+    fontWeight: active ? '700' : '600',
+    fontSize: '12px',
+    cursor: 'pointer',
+    boxShadow: active ? '0 0 14px rgba(0,240,255,0.45)' : 'none',
+    transition: 'all 0.2s ease'
+});
+
 const presetBtnStyle = (active) => ({
-    padding: '6px 14px',
+    padding: '6px 12px',
     borderRadius: '16px',
     border: active ? '1px solid #00f0ff' : '1px solid rgba(255,255,255,0.15)',
     background: active ? 'linear-gradient(135deg, #00f0ff, #0072ff)' : '#1a1f2c',
     color: active ? '#ffffff' : '#ccc',
     fontWeight: 'bold',
-    fontSize: '12px',
+    fontSize: '11px',
     cursor: 'pointer',
-    boxShadow: active ? '0 0 12px rgba(0,240,255,0.5)' : 'none',
+    boxShadow: active ? '0 0 12px rgba(0,240,255,0.45)' : 'none',
     transition: 'all 0.2s ease'
 });

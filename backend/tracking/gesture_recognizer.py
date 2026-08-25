@@ -1,4 +1,5 @@
 import math
+import time
 
 
 class GestureState:
@@ -42,7 +43,6 @@ class GestureRecognizer:
         )
 
     def recognize(self, landmarks):
-
         if not landmarks:
             self.state = GestureState.IDLE
             self.pinch_frames = 0
@@ -53,13 +53,13 @@ class GestureRecognizer:
                 "state": self.state,
                 "locked": self.locked,
                 "cursor": None,
-                "swipe": None
+                "swipe": None,
+                "timestamp": int(time.time() * 1000)
             }
 
         # ------------------------------------------------
         # LANDMARKS
         # ------------------------------------------------
-
         wrist = landmarks[0]
 
         thumb_tip = landmarks[4]
@@ -71,7 +71,6 @@ class GestureRecognizer:
         # ------------------------------------------------
         # HAND SIZE
         # ------------------------------------------------
-
         hand_size = self.distance_2d(
             wrist,
             landmarks[9]
@@ -83,7 +82,6 @@ class GestureRecognizer:
         # ------------------------------------------------
         # FINGER EXTENSION
         # ------------------------------------------------
-
         index_ratio = (
             self.distance_2d(index_tip, wrist)
             / hand_size
@@ -107,7 +105,6 @@ class GestureRecognizer:
         # ------------------------------------------------
         # PINCH
         # ------------------------------------------------
-
         pinch_distance = self.distance_2d(
             thumb_tip,
             index_tip
@@ -128,7 +125,6 @@ class GestureRecognizer:
         # ------------------------------------------------
         # FIST
         # ------------------------------------------------
-
         raw_fist = (
             index_ratio < self.folded_threshold
             and middle_ratio < self.folded_threshold
@@ -139,7 +135,6 @@ class GestureRecognizer:
         # ------------------------------------------------
         # OPEN PALM
         # ------------------------------------------------
-
         is_open_palm = (
             index_ratio > self.extended_threshold
             and middle_ratio > self.extended_threshold
@@ -150,7 +145,6 @@ class GestureRecognizer:
         # ------------------------------------------------
         # STABLE FIST
         # ------------------------------------------------
-
         if raw_fist:
             self.fist_frames += 1
         else:
@@ -169,7 +163,6 @@ class GestureRecognizer:
         # ------------------------------------------------
         # STABLE PINCH
         # ------------------------------------------------
-
         if raw_pinch:
             self.pinch_frames += 1
             self.unpinch_frames = 0
@@ -188,7 +181,6 @@ class GestureRecognizer:
         # ------------------------------------------------
         # CURSOR WITH JITTER FILTERING
         # ------------------------------------------------
-
         raw_x = (
             thumb_tip["x"] +
             index_tip["x"]
@@ -219,7 +211,6 @@ class GestureRecognizer:
         # ------------------------------------------------
         # SWIPE
         # ------------------------------------------------
-
         swipe = None
 
         if is_open_palm:
@@ -233,7 +224,6 @@ class GestureRecognizer:
         # ------------------------------------------------
         # STATE
         # ------------------------------------------------
-
         if stable_pinch:
             if self.locked:
                 self.state = GestureState.PINCH
@@ -257,5 +247,6 @@ class GestureRecognizer:
                 "y": cursor_y
             },
             "swipe": swipe,
-            "pinch_ratio": pinch_ratio
+            "pinch_ratio": pinch_ratio,
+            "timestamp": int(time.time() * 1000)
         }
