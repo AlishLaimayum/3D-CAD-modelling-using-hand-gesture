@@ -63,7 +63,7 @@ export class SnappingEngine {
      * @param {Object|null} [planeManager=null] - For grid/angle projections
      * @returns {{ snappedPos: Array<number>, isSnapped: boolean, snapType: string|null, snappedTarget: Array<number>|null }}
      */
-    snap(worldPos, cadObjects = [], drawStartPos = null, planeManager = null) {
+    snap(worldPos, cadObjects = [], drawStartPos = null, _planeManager = null) {
         if (!worldPos) {
             this.lockedVertex = null;
             this.snapType = null;
@@ -201,13 +201,9 @@ export class SnappingEngine {
         // ----------------------------------------------------
         // 3. ANGLE / ORTHOGONAL SNAPPING (0°, 45°, 90°, 135°, 180°)
         // ----------------------------------------------------
-        if (this.angleSnapEnabled && drawStartPos && planeManager) {
-            // Project worldPos and drawStartPos to local plane 2D coordinates
-            const startLocal = planeManager.worldToLocal(new (planeManager.position.constructor)(...drawStartPos));
-            const currLocal = planeManager.worldToLocal(new (planeManager.position.constructor)(...worldPos));
-
-            const ldx = currLocal.x - startLocal.x;
-            const ldz = currLocal.z - startLocal.z; // X-Z on local plane
+        if (this.angleSnapEnabled && drawStartPos) {
+            const ldx = worldPos[0] - drawStartPos[0];
+            const ldz = worldPos[2] - drawStartPos[2]; // X-Z on working plane
             const dist = Math.hypot(ldx, ldz);
 
             if (dist > 0.15) {
@@ -218,28 +214,26 @@ export class SnappingEngine {
 
                 // Snap if within 10 degrees (~0.174 rad)
                 if (angleDiff < 0.18) {
-                    const snapLocalX = startLocal.x + Math.cos(snappedAngle) * dist;
-                    const snapLocalZ = startLocal.z + Math.sin(snappedAngle) * dist;
-                    const snappedLocalVec = new (planeManager.position.constructor)(snapLocalX, currLocal.y, snapLocalZ);
-                    const snappedWorldVec = planeManager.localToWorld(snappedLocalVec);
+                    const snapX = drawStartPos[0] + Math.cos(snappedAngle) * dist;
+                    const snapZ = drawStartPos[2] + Math.sin(snappedAngle) * dist;
 
                     return {
-                        snappedPos: [snappedWorldVec.x, snappedWorldVec.y, snappedWorldVec.z],
+                        snappedPos: [snapX, worldPos[1], snapZ],
                         isSnapped: true,
                         snapType: 'ANGLE',
-                        snappedTarget: [snappedWorldVec.x, snappedWorldVec.y, snappedWorldVec.z]
+                        snappedTarget: [snapX, worldPos[1], snapZ]
                     };
                 }
             }
         }
 
         // ----------------------------------------------------
-        // 4. GRID SNAPPING
+        // 4. GRID SNAPPING (Directly aligned with visual working plane grid)
         // ----------------------------------------------------
         if (this.gridEnabled) {
             const gs = this.gridSize;
             const gx = Math.round(worldPos[0] / gs) * gs;
-            const gy = Math.round(worldPos[1] / gs) * gs;
+            const gy = 0;
             const gz = Math.round(worldPos[2] / gs) * gs;
             const gridDistSq = (worldPos[0] - gx) ** 2 + (worldPos[1] - gy) ** 2 + (worldPos[2] - gz) ** 2;
 

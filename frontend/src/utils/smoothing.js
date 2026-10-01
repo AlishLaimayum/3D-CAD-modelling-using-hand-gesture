@@ -120,9 +120,9 @@ export const SMOOTHING_PRESETS = {
         outlierThreshold: 3.0
     },
     DRAWING: {
-        alpha: 0.30,
-        deadZone: 0.003,
-        outlierThreshold: 1.8
+        alpha: 0.55,
+        deadZone: 0.001,
+        outlierThreshold: 2.5
     },
     ROTATION: {
         alpha: 0.25,

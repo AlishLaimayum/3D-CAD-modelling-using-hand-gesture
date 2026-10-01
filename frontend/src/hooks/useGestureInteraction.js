@@ -8,6 +8,7 @@
  * 4. High-Performance Snapping Engine with Hysteresis (snappingEngine.js)
  * 5. Complete Raw Drawing Coordinate Preservation in Refs
  * 6. Symmetrical Dual Mouse / Pointer Drawing
+ * 7. Hold-to-Perfect-Shape Recognition (shapeRecognizer.js)
  * 
  * High-frequency data is held in REFS to bypass React state updates.
  * Persistent completed CAD geometry is committed to Zustand via CommandManager.
@@ -23,6 +24,7 @@ import PlaneRotationController from '../cad/PlaneRotationController';
 import { PositionSmoother, SMOOTHING_PRESETS } from '../utils/smoothing';
 import { GestureStateMachine, GestureStates } from '../utils/gestureStateMachine';
 import { SnappingEngine } from '../utils/snappingEngine';
+import { recognizeShape } from '../utils/shapeRecognizer';
 
 export function useGestureInteraction() {
     const { camera, gl } = useThree();
@@ -33,7 +35,7 @@ export function useGestureInteraction() {
     const cursorPosRef = useRef([0, 0, 0]);
     const snapInfoRef = useRef({ isSnapped: false, point: null, type: null });
     const drawingPointsRef = useRef([]);
-    const activeDrawingRef = useRef({ active: false, type: 'FREEHAND', previewCorners: null });
+    const activeDrawingRef = useRef({ active: false, type: 'FREEHAND', previewCorners: null, holdProgress: 0, shapePerfected: false });
     const diagnosticsRef = useRef({
         inputFps: 0,
         renderFps: 0,
@@ -43,6 +45,16 @@ export function useGestureInteraction() {
         gestureState: 'IDLE',
         activePointCount: 0
     });
+
+    // ---------------------------------------------
+    // HOLD-TO-PERFECT-SHAPE STATE (REF-BASED)
+    // ---------------------------------------------
+    const SHAPE_HOLD_DURATION = 600; // ms — how long to hold pinch stationary to trigger shape recognition
+    const MOTION_THRESHOLD = 0.015;  // 3D distance — below this, hand is considered "stationary"
+    const shapeHoldTimerRef = useRef(null);       // setTimeout ID
+    const shapeHoldStartRef = useRef(null);       // timestamp when hold started
+    const lastDrawPointRef = useRef(null);        // last drawing point for motion detection
+    const holdProgressRAFRef = useRef(null);      // requestAnimationFrame ID for hold progress
 
     // ---------------------------------------------
     // CAD MANAGERS & ENGINE UTILITIES
@@ -134,29 +146,35 @@ export function useGestureInteraction() {
     const computeRectangleCorners = useCallback((startPos, currentPos) => {
         if (!startPos || !currentPos) return null;
 
-        // Convert world points to 2D coordinates on the working plane
-        const startLocal = planeManager.worldToLocal(new THREE.Vector3(...startPos));
-        const currentLocal = planeManager.worldToLocal(new THREE.Vector3(...currentPos));
-
-        // 4 rectangle vertices in plane local space (X-Z plane of the plane)
-        const p1Local = new THREE.Vector3(startLocal.x, startLocal.y, startLocal.z);
-        const p2Local = new THREE.Vector3(currentLocal.x, startLocal.y, startLocal.z);
-        const p3Local = new THREE.Vector3(currentLocal.x, startLocal.y, currentLocal.z);
-        const p4Local = new THREE.Vector3(startLocal.x, startLocal.y, currentLocal.z);
-
-        // Convert back to world space
-        const p1 = planeManager.localToWorld(p1Local);
-        const p2 = planeManager.localToWorld(p2Local);
-        const p3 = planeManager.localToWorld(p3Local);
-        const p4 = planeManager.localToWorld(p4Local);
+        // Points are in local working plane coordinates (X-Z plane, Y ~ 0)
+        const sx = startPos[0], sy = startPos[1], sz = startPos[2];
+        const cx = currentPos[0], cy = currentPos[1], cz = currentPos[2];
 
         return [
-            [p1.x, p1.y, p1.z],
-            [p2.x, p2.y, p2.z],
-            [p3.x, p3.y, p3.z],
-            [p4.x, p4.y, p4.z]
+            [sx, sy, sz],
+            [cx, sy, sz],
+            [cx, cy, cz],
+            [sx, sy, cz]
         ];
-    }, [planeManager]);
+    }, []);
+
+    // ---------------------------------------------
+    // HOLD-TO-SHAPE TIMER MANAGEMENT
+    // ---------------------------------------------
+    const clearShapeHoldTimer = useCallback(() => {
+        if (shapeHoldTimerRef.current) {
+            clearTimeout(shapeHoldTimerRef.current);
+            shapeHoldTimerRef.current = null;
+        }
+        if (holdProgressRAFRef.current) {
+            cancelAnimationFrame(holdProgressRAFRef.current);
+            holdProgressRAFRef.current = null;
+        }
+        shapeHoldStartRef.current = null;
+        if (activeDrawingRef.current.active) {
+            activeDrawingRef.current.holdProgress = 0;
+        }
+    }, []);
 
     // ---------------------------------------------
     // DRAWING LIFECYCLE MANAGEMENT (REF-BASED)
@@ -169,13 +187,70 @@ export function useGestureInteraction() {
         activeDrawingRef.current = {
             active: true,
             type: drawingModeRef.current,
-            previewCorners: null
+            previewCorners: null,
+            holdProgress: 0,
+            shapePerfected: false
         };
         diagnosticsRef.current.activePointCount = 1;
-    }, [drawingSmoother]);
+
+        // Reset hold-to-shape state
+        lastDrawPointRef.current = [...startPoint];
+        clearShapeHoldTimer();
+    }, [drawingSmoother, clearShapeHoldTimer]);
+
+    const startHoldProgressAnimation = useCallback(() => {
+        const animateProgress = () => {
+            if (!shapeHoldStartRef.current || !activeDrawingRef.current.active) return;
+            const elapsed = Date.now() - shapeHoldStartRef.current;
+            const progress = Math.min(1.0, elapsed / SHAPE_HOLD_DURATION);
+            activeDrawingRef.current.holdProgress = progress;
+            if (progress < 1.0) {
+                holdProgressRAFRef.current = requestAnimationFrame(animateProgress);
+            }
+        };
+        holdProgressRAFRef.current = requestAnimationFrame(animateProgress);
+    }, []);
+
+    const tryShapeRecognition = useCallback(() => {
+        if (!activeDrawingRef.current.active) return;
+        if (activeDrawingRef.current.shapePerfected) return;
+
+        const points = drawingPointsRef.current;
+        if (points.length < 8) return;
+
+        const result = recognizeShape(points);
+
+        if (result.shape && result.perfectPoints) {
+            // Replace the freehand stroke with the perfect shape
+            drawingPointsRef.current = result.perfectPoints;
+            diagnosticsRef.current.activePointCount = result.perfectPoints.length;
+            activeDrawingRef.current.shapePerfected = true;
+            activeDrawingRef.current.holdProgress = 1.0;
+            activeDrawingRef.current.recognizedShape = result.shape;
+            activeDrawingRef.current.confidence = result.confidence;
+        } else {
+            // No shape recognized — reset hold state, keep freehand
+            activeDrawingRef.current.holdProgress = 0;
+        }
+
+        shapeHoldTimerRef.current = null;
+        shapeHoldStartRef.current = null;
+    }, []);
+
+    const startShapeHoldTimer = useCallback(() => {
+        clearShapeHoldTimer();
+        shapeHoldStartRef.current = Date.now();
+        startHoldProgressAnimation();
+
+        shapeHoldTimerRef.current = setTimeout(() => {
+            tryShapeRecognition();
+        }, SHAPE_HOLD_DURATION);
+    }, [clearShapeHoldTimer, startHoldProgressAnimation, tryShapeRecognition]);
 
     const appendDrawingPoint = useCallback((rawPoint) => {
         if (!activeDrawingRef.current.active || !rawPoint) return;
+        // If shape was already perfected, don't append more points
+        if (activeDrawingRef.current.shapePerfected) return;
 
         // Smooth drawing point for stable geometry
         const smoothed = drawingSmoother.update(rawPoint);
@@ -200,17 +275,46 @@ export function useGestureInteraction() {
         if (activeDrawingRef.current.type === 'RECTANGLE' && startPos) {
             activeDrawingRef.current.previewCorners = computeRectangleCorners(startPos, activePoint);
         }
-    }, [drawingSmoother, snappingEngine, planeManager, computeRectangleCorners]);
+
+        // ---------------------------------------------------------
+        // MOTION DETECTION FOR HOLD-TO-PERFECT-SHAPE
+        // Only for FREEHAND mode — other modes have explicit shapes
+        // ---------------------------------------------------------
+        if (activeDrawingRef.current.type === 'FREEHAND' && lastDrawPointRef.current) {
+            const dx = activePoint[0] - lastDrawPointRef.current[0];
+            const dy = activePoint[1] - lastDrawPointRef.current[1];
+            const dz = activePoint[2] - lastDrawPointRef.current[2];
+            const moveDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+            if (moveDist > MOTION_THRESHOLD) {
+                // Hand is moving — reset hold timer
+                clearShapeHoldTimer();
+                lastDrawPointRef.current = [...activePoint];
+            } else if (!shapeHoldTimerRef.current && drawingPointsRef.current.length >= 8) {
+                // Hand is stationary and we have enough points — start hold timer
+                startShapeHoldTimer();
+            }
+            // If timer is already running and hand is still stationary, let it continue
+        } else {
+            lastDrawPointRef.current = activePoint ? [...activePoint] : null;
+        }
+    }, [drawingSmoother, snappingEngine, planeManager, computeRectangleCorners, clearShapeHoldTimer, startShapeHoldTimer]);
 
     const finalizeDrawing = useCallback(() => {
         if (!activeDrawingRef.current.active) return;
 
+        // Clean up hold-to-shape timer
+        clearShapeHoldTimer();
+
         const points = drawingPointsRef.current;
         const currentMode = activeDrawingRef.current.type;
+        const wasPerfected = activeDrawingRef.current.shapePerfected;
+        const recognizedShape = activeDrawingRef.current.recognizedShape;
 
-        activeDrawingRef.current = { active: false, type: 'FREEHAND', previewCorners: null };
+        activeDrawingRef.current = { active: false, type: 'FREEHAND', previewCorners: null, holdProgress: 0, shapePerfected: false };
         diagnosticsRef.current.activePointCount = 0;
         drawingSmoother.reset();
+        lastDrawPointRef.current = null;
 
         if (points.length < 2) {
             drawingPointsRef.current = [];
@@ -218,8 +322,13 @@ export function useGestureInteraction() {
         }
 
         let finalPoints = [];
+        let finalType = currentMode;
 
-        if (currentMode === 'FREEHAND') {
+        if (wasPerfected && recognizedShape) {
+            // Shape was perfected by hold-to-correct — use the perfected points directly
+            finalPoints = [...points];
+            finalType = recognizedShape;
+        } else if (currentMode === 'FREEHAND') {
             // Preserve ALL raw points collected during freehand stroke
             finalPoints = [...points];
         } else if (currentMode === 'LINE') {
@@ -249,7 +358,7 @@ export function useGestureInteraction() {
         // Construct completed CAD object and commit via CommandManager (Zustand + Undo Stack)
         const newCADObject = {
             id: `cad_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-            type: currentMode,
+            type: finalType,
             points: finalPoints,
             start: finalPoints[0],
             end: finalPoints[finalPoints.length - 1],
@@ -260,7 +369,7 @@ export function useGestureInteraction() {
 
         addCADObject(newCADObject);
         drawingPointsRef.current = [];
-    }, [addCADObject, computeRectangleCorners, drawingSmoother, planeManager]);
+    }, [addCADObject, computeRectangleCorners, clearShapeHoldTimer, drawingSmoother, planeManager]);
 
     // ---------------------------------------------
     // WEBSOCKET INTERACTION & GESTURE PROCESSING
@@ -309,16 +418,37 @@ export function useGestureInteraction() {
                     if (previous) {
                         const dx = data.swipe.x - previous.x;
                         const dy = data.swipe.y - previous.y;
-                        rotationController.update(dx, dy, camera);
+
+                        // Compute palm roll delta with atan2 wrap-around correction
+                        let dangle = 0;
+                        if (data.swipe.angle !== undefined && previous.angle !== undefined) {
+                            dangle = data.swipe.angle - previous.angle;
+                            // Normalise to (-π, π] to handle the ±π wrap boundary
+                            if (dangle > Math.PI)  dangle -= 2 * Math.PI;
+                            if (dangle < -Math.PI) dangle += 2 * Math.PI;
+                        }
+
+                        rotationController.update(dx, dy, camera, data.state, dangle);
                         setPlaneRotation(planeManager.getRotation());
+                        cursorSmoother.reset();
+                        drawingSmoother.reset();
+                    } else {
+                        rotationController.start();
                     }
-                    previousSwipeRef.current = { x: data.swipe.x, y: data.swipe.y };
+                    previousSwipeRef.current = {
+                        x: data.swipe.x,
+                        y: data.swipe.y,
+                        angle: data.swipe.angle
+                    };
                 }
             } else {
-                previousSwipeRef.current = null;
+                if (previousSwipeRef.current) {
+                    rotationController.stop();
+                    previousSwipeRef.current = null;
+                }
             }
 
-            // 3. CURSOR RAYCASTING & ACTIVE DRAWING (WORLD SPACE)
+            // 3. CURSOR RAYCASTING & ACTIVE DRAWING (PLANE LOCAL SPACE)
             if (data.cursor) {
                 // Map normalized coords [0, 1] to Three.js NDC [-1, 1]
                 ndcVec.set(data.cursor.x * 2 - 1, -(data.cursor.y * 2) + 1);
@@ -338,9 +468,11 @@ export function useGestureInteraction() {
                 }
 
                 if (pointWorld) {
-                    const rawPos = [pointWorld.x, pointWorld.y, pointWorld.z];
+                    // Convert world intersection point into working plane local coordinates
+                    const localPt = planeManager.worldToLocal(pointWorld);
+                    const rawPos = [localPt.x, localPt.y, localPt.z];
 
-                    // Smooth cursor position
+                    // Smooth cursor position in local plane coordinates
                     const smoothedPos = cursorSmoother.update(rawPos);
                     const currentPos = smoothedPos || rawPos;
 
@@ -409,6 +541,7 @@ export function useGestureInteraction() {
         planeManager,
         rotationController,
         cursorSmoother,
+        drawingSmoother,
         gestureStateMachine,
         snappingEngine,
         setGestureState,
@@ -444,7 +577,8 @@ export function useGestureInteraction() {
                 if (t >= 0) {
                     const hit = tempPointWorld.copy(raycaster.ray.origin)
                         .addScaledVector(raycaster.ray.direction, t);
-                    return [hit.x, hit.y, hit.z];
+                    const localPt = planeManager.worldToLocal(hit);
+                    return [localPt.x, localPt.y, localPt.z];
                 }
             }
             return null;

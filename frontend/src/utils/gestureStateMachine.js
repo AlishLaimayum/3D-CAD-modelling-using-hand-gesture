@@ -68,7 +68,12 @@ export class GestureStateMachine {
         // 1. PINCH HYSTERESIS LOGIC
         // ----------------------------------------------------
         let evaluatedPinch = false;
-        if (pinchRatio !== null) {
+        // FIST closes ALL fingers (including thumb+index), which can drop pinch_ratio below
+        // the pinch threshold even though the user is not pinching. Block pinch entirely
+        // when the backend explicitly reports FIST.
+        const isFist = rawState === 'FIST';
+
+        if (!isFist && pinchRatio !== null) {
             if (!this.isPinching) {
                 // To enter pinch: distance must be less than start threshold
                 if (pinchRatio < this.pinchStartThreshold || rawState === 'PINCH') {
@@ -95,9 +100,10 @@ export class GestureStateMachine {
                     evaluatedPinch = true;
                 }
             }
-        } else {
+        } else if (!isFist) {
             evaluatedPinch = rawState === 'PINCH';
         }
+        // If isFist: evaluatedPinch stays false — FIST never triggers drawing
 
         // ----------------------------------------------------
         // 2. STATE MACHINE TRANSITIONS

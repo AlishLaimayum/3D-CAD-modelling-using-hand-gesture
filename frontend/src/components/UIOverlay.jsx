@@ -550,6 +550,7 @@ export function UIOverlay() {
 
                 <button
                     onClick={() => setPresetPlane('TOP')}
+                    title="True Top View (XZ plane - looking straight down from top)"
                     style={presetBtnStyle(activePreset === 'TOP')}
                 >
                     TOP (XZ)
@@ -557,6 +558,7 @@ export function UIOverlay() {
 
                 <button
                     onClick={() => setPresetPlane('FRONT')}
+                    title="True Front View (XY plane - looking straight from front)"
                     style={presetBtnStyle(activePreset === 'FRONT')}
                 >
                     FRONT (XY)
@@ -564,6 +566,7 @@ export function UIOverlay() {
 
                 <button
                     onClick={() => setPresetPlane('SIDE')}
+                    title="True Side View (YZ plane - looking straight from side)"
                     style={presetBtnStyle(activePreset === 'SIDE')}
                 >
                     SIDE (YZ)
@@ -571,6 +574,7 @@ export function UIOverlay() {
 
                 <button
                     onClick={() => setPresetPlane('ISO')}
+                    title="Isometric 3D View (45° angle)"
                     style={presetBtnStyle(activePreset === 'ISO')}
                 >
                     ISO (45°)
@@ -578,31 +582,83 @@ export function UIOverlay() {
 
                 <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)' }} />
 
-                <span style={{ fontSize: '11px', color: '#aaa', fontWeight: '600' }}>HEIGHT:</span>
-                <button
-                    onClick={() => setPlaneOffset(planePosition[1] + 1)}
-                    title="Raise Plane Height (+1 Y)"
-                    style={btnStyle}
-                >
-                    <MoveUp size={13} color="#00ff66" />
-                    <span>+1</span>
-                </button>
+                {/* X Position Offset */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <span style={{ fontSize: '11px', color: '#ff5555', fontWeight: 'bold' }}>X:</span>
+                    <button
+                        onClick={() => setPlaneOffset('X', planePosition[0] - 1)}
+                        title="Move Plane -1 X"
+                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
+                    >
+                        -1
+                    </button>
+                    <span style={{ fontSize: '11px', minWidth: '16px', textAlign: 'center', color: '#fff', fontWeight: '600' }}>
+                        {planePosition[0]}
+                    </span>
+                    <button
+                        onClick={() => setPlaneOffset('X', planePosition[0] + 1)}
+                        title="Move Plane +1 X"
+                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
+                    >
+                        +1
+                    </button>
+                </div>
 
-                <button
-                    onClick={() => setPlaneOffset(planePosition[1] - 1)}
-                    title="Lower Plane Height (-1 Y)"
-                    style={btnStyle}
-                >
-                    <MoveDown size={13} color="#ffea00" />
-                    <span>-1</span>
-                </button>
+                {/* Y Position Offset (Height) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <span style={{ fontSize: '11px', color: '#00ff66', fontWeight: 'bold' }}>Y:</span>
+                    <button
+                        onClick={() => setPlaneOffset('Y', planePosition[1] - 1)}
+                        title="Lower Plane Height (-1 Y)"
+                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
+                    >
+                        -1
+                    </button>
+                    <span style={{ fontSize: '11px', minWidth: '16px', textAlign: 'center', color: '#fff', fontWeight: '600' }}>
+                        {planePosition[1]}
+                    </span>
+                    <button
+                        onClick={() => setPlaneOffset('Y', planePosition[1] + 1)}
+                        title="Raise Plane Height (+1 Y)"
+                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
+                    >
+                        +1
+                    </button>
+                </div>
 
+                {/* Z Position Offset */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <span style={{ fontSize: '11px', color: '#3399ff', fontWeight: 'bold' }}>Z:</span>
+                    <button
+                        onClick={() => setPlaneOffset('Z', planePosition[2] - 1)}
+                        title="Move Plane -1 Z"
+                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
+                    >
+                        -1
+                    </button>
+                    <span style={{ fontSize: '11px', minWidth: '16px', textAlign: 'center', color: '#fff', fontWeight: '600' }}>
+                        {planePosition[2]}
+                    </span>
+                    <button
+                        onClick={() => setPlaneOffset('Z', planePosition[2] + 1)}
+                        title="Move Plane +1 Z"
+                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
+                    >
+                        +1
+                    </button>
+                </div>
+
+                {/* Reset Origin */}
                 <button
-                    onClick={() => setPlaneOffset(0)}
-                    title="Reset Plane Height to 0"
-                    style={{ ...btnStyle, fontSize: '11px', padding: '6px 10px' }}
+                    onClick={() => {
+                        setPlaneOffset('X', 0);
+                        setPlaneOffset('Y', 0);
+                        setPlaneOffset('Z', 0);
+                    }}
+                    title="Reset Plane Origin to (0, 0, 0)"
+                    style={{ ...btnStyle, fontSize: '11px', padding: '5px 10px', color: '#00f0ff', borderColor: 'rgba(0,240,255,0.3)' }}
                 >
-                    Y=0
+                    Reset (0,0,0)
                 </button>
             </div>
         </>

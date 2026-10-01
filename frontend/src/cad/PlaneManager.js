@@ -11,6 +11,15 @@ class PlaneManager {
 
         // Lock state
         this.locked = false;
+
+        // Cached quaternions for high-frequency worldToLocal and localToWorld conversions
+        this.quaternion = new THREE.Quaternion().setFromEuler(this.rotation);
+        this.invQuaternion = this.quaternion.clone().invert();
+    }
+
+    _updateQuaternions() {
+        this.quaternion.setFromEuler(this.rotation);
+        this.invQuaternion.copy(this.quaternion).invert();
     }
 
     // ---------------------------------------------
@@ -26,6 +35,7 @@ class PlaneManager {
         if (this.locked) return;
 
         this.rotation.y += amount;
+        this._updateQuaternions();
     }
 
     // ---------------------------------------------
@@ -39,6 +49,7 @@ class PlaneManager {
         if (this.locked) return;
 
         this.rotation.x += amount;
+        this._updateQuaternions();
     }
 
     // ---------------------------------------------
@@ -53,6 +64,7 @@ class PlaneManager {
         const qInc = new THREE.Quaternion().setFromAxisAngle(cameraUp, amount);
         q.premultiply(qInc);
         this.rotation.setFromQuaternion(q);
+        this._updateQuaternions();
     }
 
     rotateCameraRelativeVertical(amount, camera) {
@@ -63,6 +75,19 @@ class PlaneManager {
         const qInc = new THREE.Quaternion().setFromAxisAngle(cameraRight, amount);
         q.premultiply(qInc);
         this.rotation.setFromQuaternion(q);
+        this._updateQuaternions();
+    }
+
+    rotateCameraRelativeRoll(amount, camera) {
+        if (this.locked) return;
+        // Rotate around camera's forward axis (line of sight) — matches palm clockwise/anticlockwise roll
+        const cameraForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+
+        const q = new THREE.Quaternion().setFromEuler(this.rotation);
+        const qInc = new THREE.Quaternion().setFromAxisAngle(cameraForward, amount);
+        q.premultiply(qInc);
+        this.rotation.setFromQuaternion(q);
+        this._updateQuaternions();
     }
 
     // ---------------------------------------------
@@ -109,6 +134,7 @@ class PlaneManager {
     setRotation(x, y, z) {
 
         this.rotation.set(x, y, z);
+        this._updateQuaternions();
     }
 
     setPosition(x, y, z) {
@@ -149,20 +175,28 @@ class PlaneManager {
     }
 
     // Convert 3D world coordinate to local plane coordinate
-    worldToLocal(worldPoint) {
-        const pt = worldPoint.clone().sub(this.position);
-        const invQuaternion = new THREE.Quaternion().setFromEuler(this.rotation).invert();
-        pt.applyQuaternion(invQuaternion);
-        return pt;
+    worldToLocal(worldPoint, target = new THREE.Vector3()) {
+        if (Array.isArray(worldPoint)) {
+            target.set(worldPoint[0], worldPoint[1], worldPoint[2]);
+        } else if (worldPoint instanceof THREE.Vector3) {
+            target.copy(worldPoint);
+        }
+        target.sub(this.position);
+        target.applyQuaternion(this.invQuaternion);
+        if (Math.abs(target.y) < 1e-6) target.y = 0;
+        return target;
     }
 
     // Convert local plane coordinate to 3D world coordinate
-    localToWorld(localPoint) {
-        const pt = localPoint.clone();
-        const quaternion = new THREE.Quaternion().setFromEuler(this.rotation);
-        pt.applyQuaternion(quaternion);
-        pt.add(this.position);
-        return pt;
+    localToWorld(localPoint, target = new THREE.Vector3()) {
+        if (Array.isArray(localPoint)) {
+            target.set(localPoint[0], localPoint[1], localPoint[2]);
+        } else if (localPoint instanceof THREE.Vector3) {
+            target.copy(localPoint);
+        }
+        target.applyQuaternion(this.quaternion);
+        target.add(this.position);
+        return target;
     }
 }
 

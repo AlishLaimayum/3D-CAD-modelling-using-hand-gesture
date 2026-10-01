@@ -7,6 +7,7 @@ class GestureState:
     OPEN_PALM = "OPEN_PALM"
     FIST = "FIST"
     PINCH = "PINCH"
+    PEACE = "PEACE"
 
 
 class GestureRecognizer:
@@ -32,6 +33,10 @@ class GestureRecognizer:
         self.fist_frames = 0
         self.last_fist_action = False
 
+        # Peace stability
+        self.peace_frames = 0
+        self.peace_frames_required = 2
+
         self.pinch_start_frames = 1
         self.unpinch_frames_required = 2
         self.fist_frames_required = 5
@@ -48,6 +53,7 @@ class GestureRecognizer:
             self.pinch_frames = 0
             self.unpinch_frames = 0
             self.fist_frames = 0
+            self.peace_frames = 0
 
             return {
                 "state": self.state,
@@ -143,6 +149,26 @@ class GestureRecognizer:
         )
 
         # ------------------------------------------------
+        # PEACE SIGN (Index & Middle extended, Ring & Pinky folded)
+        # ------------------------------------------------
+        raw_peace = (
+            index_ratio > 1.20
+            and middle_ratio > 1.20
+            and ring_ratio < 1.10
+            and pinky_ratio < 1.10
+            and pinch_ratio > 0.50
+        )
+
+        if raw_peace:
+            self.peace_frames += 1
+        else:
+            self.peace_frames = 0
+
+        stable_peace = (
+            self.peace_frames >= self.peace_frames_required
+        )
+
+        # ------------------------------------------------
         # STABLE FIST
         # ------------------------------------------------
         if raw_fist:
@@ -197,11 +223,11 @@ class GestureRecognizer:
         else:
             # Micro-jitter deadzone filter (ignore tiny hand tremors < 0.003)
             dist_sq = (raw_x - self.prev_x) ** 2 + (raw_y - self.prev_y) ** 2
-            if dist_sq < 0.00001:  # ~0.003 squared
+            if dist_sq < 0.000004:  # ~0.002 squared — tighter deadzone for responsiveness
                 cursor_x = self.prev_x
                 cursor_y = self.prev_y
             else:
-                alpha = 0.18  # Smooth 82% past frame, 18% new frame
+                alpha = 0.55  # Smooth 45% past frame, 55% new frame — responsive tracking
                 cursor_x = alpha * raw_x + (1 - alpha) * self.prev_x
                 cursor_y = alpha * raw_y + (1 - alpha) * self.prev_y
 
@@ -213,12 +239,22 @@ class GestureRecognizer:
         # ------------------------------------------------
         swipe = None
 
-        if is_open_palm:
+        if is_open_palm or stable_peace:
             hand_center = landmarks[9]
+
+            # Palm roll angle: angle of the knuckle line from index_mcp (5) to pinky_mcp (17)
+            # Positive angle = palm tilted clockwise when viewed from the front camera
+            index_mcp = landmarks[5]
+            pinky_mcp = landmarks[17]
+            palm_angle = math.atan2(
+                pinky_mcp["y"] - index_mcp["y"],
+                pinky_mcp["x"] - index_mcp["x"]
+            )
 
             swipe = {
                 "x": hand_center["x"],
-                "y": hand_center["y"]
+                "y": hand_center["y"],
+                "angle": palm_angle
             }
 
         # ------------------------------------------------
@@ -232,6 +268,9 @@ class GestureRecognizer:
 
         elif stable_fist:
             self.state = GestureState.FIST
+
+        elif stable_peace:
+            self.state = GestureState.PEACE
 
         elif is_open_palm:
             self.state = GestureState.OPEN_PALM

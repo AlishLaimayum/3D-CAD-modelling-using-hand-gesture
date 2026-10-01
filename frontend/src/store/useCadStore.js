@@ -95,18 +95,46 @@ export const useCadStore = create((set, get) => {
         setPlaneRotation: (rotation) => set({ planeRotation: rotation }),
         setPlanePosition: (position) => set({ planePosition: position }),
 
-        setPresetPlane: (preset) => set(() => {
+        cameraTargetPosition: null,
+
+        setCameraTargetPosition: (pos) => set({ cameraTargetPosition: pos }),
+
+        setPresetPlane: (preset) => set((state) => {
             let rot = [0, 0, 0];
-            if (preset === 'FRONT') rot = [Math.PI / 2, 0, 0];
-            else if (preset === 'SIDE') rot = [0, 0, Math.PI / 2];
-            else if (preset === 'TOP') rot = [0, 0, 0];
-            else if (preset === 'ISO') rot = [Math.PI / 4, Math.PI / 4, 0];
-            return { planeRotation: rot, activePreset: preset };
+            let camPos = [6, 6, 6];
+
+            if (preset === 'FRONT') {
+                rot = [Math.PI / 2, 0, 0];
+                // Looking straight at the XY plane along +Z
+                camPos = [state.planePosition[0], state.planePosition[1], 8];
+            } else if (preset === 'SIDE') {
+                rot = [0, 0, Math.PI / 2];
+                // Looking straight at the YZ plane along +X
+                camPos = [8, state.planePosition[1], state.planePosition[2]];
+            } else if (preset === 'TOP') {
+                rot = [0, 0, 0];
+                // True top view looking straight down along -Y
+                camPos = [state.planePosition[0], 9, state.planePosition[2] + 0.0001];
+            } else if (preset === 'ISO') {
+                rot = [Math.PI / 4, Math.PI / 4, 0];
+                camPos = [6, 6, 6];
+            }
+
+            return { 
+                planeRotation: rot, 
+                activePreset: preset,
+                cameraTargetPosition: camPos
+            };
         }),
 
-        setPlaneOffset: (offsetY) => set((state) => ({
-            planePosition: [state.planePosition[0], offsetY, state.planePosition[2]]
-        })),
+        setPlaneOffset: (axis, value) => set((state) => {
+            const current = [...state.planePosition];
+            if (axis === 'X') current[0] = value;
+            else if (axis === 'Y') current[1] = value;
+            else if (axis === 'Z') current[2] = value;
+            else if (typeof axis === 'number') current[1] = axis; // backwards compatibility
+            return { planePosition: current };
+        }),
 
         toggleMagneticLock: () => set((state) => ({ magneticLockEnabled: !state.magneticLockEnabled })),
         setMagneticLockEnabled: (enabled) => set({ magneticLockEnabled: enabled }),

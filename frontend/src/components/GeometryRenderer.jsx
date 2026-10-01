@@ -63,6 +63,7 @@ export function GeometryRenderer({ cursorPosRef, snapInfoRef, activeDrawingRef, 
             <ActiveDrawingRenderer 
                 activeDrawingRef={activeDrawingRef} 
                 drawingPointsRef={drawingPointsRef} 
+                cursorPosRef={cursorPosRef}
             />
 
             {/* 3D Cursor & Magnetic Snap Target Indicator */}
