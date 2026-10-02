@@ -64,3 +64,24 @@ export class ClearCADObjectsCommand extends Command {
         this.storeApi.internalSetObjects(this.previousObjects);
     }
 }
+
+/**
+ * Command to update properties of a specific CAD object (e.g. Z-Scale elongation).
+ */
+export class UpdateCADObjectCommand extends Command {
+    constructor(objectId, oldProps, newProps, storeApi) {
+        super('Modify Object Transform');
+        this.objectId = objectId;
+        this.oldProps = oldProps;
+        this.newProps = newProps;
+        this.storeApi = storeApi;
+    }
+
+    execute() {
+        this.storeApi.internalUpdateObject(this.objectId, this.newProps);
+    }
+
+    undo() {
+        this.storeApi.internalUpdateObject(this.objectId, this.oldProps);
+    }
+}

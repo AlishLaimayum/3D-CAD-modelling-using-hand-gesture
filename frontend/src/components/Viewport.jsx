@@ -10,22 +10,28 @@ import { WorkingPlane } from './WorkingPlane';
 import { GeometryRenderer } from './GeometryRenderer';
 import { PerformanceOverlay } from './PerformanceOverlay';
 import { useGestureInteraction } from '../hooks/useGestureInteraction';
+import { useZElongation } from '../hooks/useZElongation';
 import { useCadStore } from '../store/useCadStore';
 
 function CameraController({ controlsRef }) {
     const { camera } = useThree();
     const cameraTargetPosition = useCadStore((state) => state.cameraTargetPosition);
+    const cameraTargetUp = useCadStore((state) => state.cameraTargetUp);
     const planePosition = useCadStore((state) => state.planePosition);
     const targetCamVec = useRef(new THREE.Vector3());
     const targetLookAt = useRef(new THREE.Vector3());
+    const targetUpVec = useRef(new THREE.Vector3(0, 1, 0));
     const isAnimating = useRef(false);
 
     useEffect(() => {
         if (!cameraTargetPosition) return;
         targetCamVec.current.set(...cameraTargetPosition);
         targetLookAt.current.set(...planePosition);
+        if (cameraTargetUp) {
+            targetUpVec.current.set(...cameraTargetUp);
+        }
         isAnimating.current = true;
-    }, [cameraTargetPosition, planePosition]);
+    }, [cameraTargetPosition, cameraTargetUp, planePosition]);
 
     useFrame((_, delta) => {
         if (!isAnimating.current) return;
@@ -33,6 +39,7 @@ function CameraController({ controlsRef }) {
         // Smooth camera damping towards target
         const lerpFactor = Math.min(1, delta * 9);
         camera.position.lerp(targetCamVec.current, lerpFactor);
+        camera.up.lerp(targetUpVec.current, lerpFactor);
 
         if (controlsRef.current) {
             controlsRef.current.target.lerp(targetLookAt.current, lerpFactor);
@@ -41,6 +48,7 @@ function CameraController({ controlsRef }) {
 
         if (camera.position.distanceTo(targetCamVec.current) < 0.02) {
             camera.position.copy(targetCamVec.current);
+            camera.up.copy(targetUpVec.current);
             if (controlsRef.current) {
                 controlsRef.current.target.copy(targetLookAt.current);
                 controlsRef.current.update();
@@ -53,7 +61,9 @@ function CameraController({ controlsRef }) {
 }
 
 function Scene({ interactionRefBridge, controlsRef }) {
-    const interaction = useGestureInteraction();
+    // Z-Elongation HOLD mode — mounts pointer/gesture listeners when active
+    const zElongation = useZElongation(controlsRef);
+    const interaction = useGestureInteraction(zElongation);
     
     // Pass interaction refs out to parent for UI overlays
     if (interactionRefBridge) {
@@ -86,7 +96,7 @@ function Scene({ interactionRefBridge, controlsRef }) {
 
             <CameraController controlsRef={controlsRef} />
 
-            {/* Shared Plane Group: Grid, Cursor, and All Geometry Rotate and Move Together */}
+            {/* Dynamic Drawing Plane: Grid, Plane Axes, Cursor, and Geometry Move with Active Plane */}
             <group position={planePosition} rotation={planeRotation}>
                 <WorkingPlane />
                 <GeometryRenderer 

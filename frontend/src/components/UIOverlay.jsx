@@ -36,7 +36,8 @@ import {
     Square,
     Grid,
     CornerDownRight,
-    Activity
+    Activity,
+    ArrowUpDown
 } from 'lucide-react';
 
 export function UIOverlay() {
@@ -75,6 +76,10 @@ export function UIOverlay() {
     const setPresetPlane = useCadStore((state) => state.setPresetPlane);
     const setPlaneOffset = useCadStore((state) => state.setPlaneOffset);
     const toggleDiagnostics = useCadStore((state) => state.toggleDiagnostics);
+
+    // Z-Axis Elongation HOLD mode
+    const zHoldModeEnabled = useCadStore((state) => state.zHoldModeEnabled);
+    const toggleZHoldMode  = useCadStore((state) => state.toggleZHoldMode);
 
     const fileInputRef = useRef(null);
 
@@ -240,6 +245,24 @@ export function UIOverlay() {
                     <span style={{ color: '#888', fontSize: '11px', marginLeft: '6px' }}>({totalPoints} pts)</span>
                 </div>
 
+                {zHoldModeEnabled && (
+                    <div style={{
+                        marginTop: '8px',
+                        padding: '6px 10px',
+                        background: 'rgba(255,170,0,0.12)',
+                        border: '1px solid rgba(255,170,0,0.4)',
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                        color: '#ffaa00',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                    }}>
+                        <ArrowUpDown size={12} />
+                        <span><strong>Z-HOLD ACTIVE</strong> — Drag object to elongate along Z axis</span>
+                    </div>
+                )}
+
                 {isSnapped && snappedPoint && (
                     <div style={{ marginTop: '8px', padding: '6px 8px', background: 'rgba(0,255,102,0.1)', borderRadius: '6px', fontSize: '11px', color: '#00ff66' }}>
                         📍 Snapped: [{snappedPoint[0].toFixed(2)}, {snappedPoint[1].toFixed(2)}, {snappedPoint[2].toFixed(2)}]
@@ -294,6 +317,25 @@ export function UIOverlay() {
                 >
                     <Square size={15} />
                     <span>Rectangle</span>
+                </button>
+
+                {/* Z-Axis Elongation HOLD Mode */}
+                <button
+                    id="btn-z-hold"
+                    onClick={toggleZHoldMode}
+                    title="Toggle Z-Elongation HOLD mode: pinch/click an object and drag along Z to scale it"
+                    style={{
+                        ...toolBtnStyle(zHoldModeEnabled),
+                        border: zHoldModeEnabled ? '1px solid #ffaa00' : '1px solid rgba(255,255,255,0.15)',
+                        background: zHoldModeEnabled
+                            ? 'linear-gradient(135deg, #ff8c00, #ffaa00)'
+                            : '#1a1f2c',
+                        color: zHoldModeEnabled ? '#000' : '#ccc',
+                        boxShadow: zHoldModeEnabled ? '0 0 14px rgba(255,170,0,0.55)' : 'none',
+                    }}
+                >
+                    <ArrowUpDown size={15} />
+                    <span>HOLD</span>
                 </button>
 
                 <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
@@ -549,35 +591,35 @@ export function UIOverlay() {
                 </div>
 
                 <button
-                    onClick={() => setPresetPlane('TOP')}
-                    title="True Top View (XZ plane - looking straight down from top)"
-                    style={presetBtnStyle(activePreset === 'TOP')}
+                    onClick={() => setPresetPlane('XY')}
+                    title="XY Plane (Normal = Z axis). Red=X horizontal, Green=Y vertical."
+                    style={presetBtnStyle(activePreset === 'XY')}
                 >
-                    TOP (XZ)
+                    XY
                 </button>
 
                 <button
-                    onClick={() => setPresetPlane('FRONT')}
-                    title="True Front View (XY plane - looking straight from front)"
-                    style={presetBtnStyle(activePreset === 'FRONT')}
+                    onClick={() => setPresetPlane('YZ')}
+                    title="YZ Plane (Normal = X axis). Blue=Z horizontal, Green=Y vertical."
+                    style={presetBtnStyle(activePreset === 'YZ')}
                 >
-                    FRONT (XY)
+                    YZ
                 </button>
 
                 <button
-                    onClick={() => setPresetPlane('SIDE')}
-                    title="True Side View (YZ plane - looking straight from side)"
-                    style={presetBtnStyle(activePreset === 'SIDE')}
+                    onClick={() => setPresetPlane('XZ')}
+                    title="XZ Plane (Normal = Y axis). Red=X horizontal, Blue=Z vertical."
+                    style={presetBtnStyle(activePreset === 'XZ')}
                 >
-                    SIDE (YZ)
+                    XZ
                 </button>
 
                 <button
                     onClick={() => setPresetPlane('ISO')}
-                    title="Isometric 3D View (45° angle)"
+                    title="Isometric 3D Perspective View (45°)"
                     style={presetBtnStyle(activePreset === 'ISO')}
                 >
-                    ISO (45°)
+                    ISO (3D)
                 </button>
 
                 <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)' }} />
@@ -660,6 +702,39 @@ export function UIOverlay() {
                 >
                     Reset (0,0,0)
                 </button>
+
+                <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)' }} />
+
+                {/* Axis Indicator Legend */}
+                <div 
+                    title="3D Coordinate System Orientation (RGB = XYZ)"
+                    style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px', 
+                        background: 'rgba(0, 0, 0, 0.45)', 
+                        padding: '4px 10px', 
+                        borderRadius: '12px',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        letterSpacing: '0.5px'
+                    }}
+                >
+                    <span style={{ color: '#888', textTransform: 'uppercase', fontSize: '10px', marginRight: '2px' }}>Axes:</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ff4444' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ff4444', display: 'inline-block', boxShadow: '0 0 6px #ff4444' }} />
+                        Red = X
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#00e676' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00e676', display: 'inline-block', boxShadow: '0 0 6px #00e676' }} />
+                        Green = Y
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#2979ff' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2979ff', display: 'inline-block', boxShadow: '0 0 6px #2979ff' }} />
+                        Blue = Z
+                    </span>
+                </div>
             </div>
         </>
     );

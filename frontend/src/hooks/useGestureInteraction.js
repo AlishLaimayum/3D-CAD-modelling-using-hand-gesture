@@ -26,8 +26,13 @@ import { GestureStateMachine, GestureStates } from '../utils/gestureStateMachine
 import { SnappingEngine } from '../utils/snappingEngine';
 import { recognizeShape } from '../utils/shapeRecognizer';
 
-export function useGestureInteraction() {
+export function useGestureInteraction(zElongation) {
     const { camera, gl } = useThree();
+
+    const zElongationRef = useRef(zElongation);
+    useEffect(() => {
+        zElongationRef.current = zElongation;
+    }, [zElongation]);
 
     // ---------------------------------------------
     // SHARED HIGH-FREQUENCY NON-REACTIVE REFS
@@ -102,6 +107,7 @@ export function useGestureInteraction() {
     const angleSnapEnabled = useCadStore((state) => state.angleSnapEnabled);
     const snapDistance = useCadStore((state) => state.snapDistance);
     const gridSize = useCadStore((state) => state.gridSize);
+    const zHoldModeEnabled = useCadStore((state) => state.zHoldModeEnabled);
 
     const setGestureState = useCadStore((state) => state.setGestureState);
     const setPlaneLocked = useCadStore((state) => state.setPlaneLocked);
@@ -115,6 +121,10 @@ export function useGestureInteraction() {
 
     const drawingModeRef = useRef(drawingMode);
     drawingModeRef.current = drawingMode;
+
+    // Ref-tracked hold mode flag — checked in hot-path callbacks without closure issues
+    const zHoldRef = useRef(zHoldModeEnabled);
+    zHoldRef.current = zHoldModeEnabled;
 
     const isPointerDrawingRef = useRef(false);
     const isGestureDrawingRef = useRef(false);
@@ -494,10 +504,17 @@ export function useGestureInteraction() {
                     // Update low-frequency snap state only if state transitioned
                     setSnappedInfo({ isSnapped: snapResult.isSnapped, point: snapResult.snappedTarget });
 
-                    // Handle Gesture Pinch Drawing
+                    // Handle Gesture Pinch Drawing vs. Z-Elongation
                     const isPinching = (effectiveState === GestureStates.DRAWING || effectiveState === GestureStates.PINCH_START) && data.locked;
 
-                    if (isPinching) {
+                    if (zHoldRef.current) {
+                        // Drawing disabled in Hold mode — route pinch gestures directly to Z-Elongation
+                        if (isGestureDrawingRef.current) {
+                            isGestureDrawingRef.current = false;
+                            finalizeDrawing();
+                        }
+                        zElongationRef.current?.handleGesturePinchUpdate?.(isPinching, finalPos, data.cursor.y);
+                    } else if (isPinching) {
                         if (!isGestureDrawingRef.current) {
                             isGestureDrawingRef.current = true;
                             startDrawing(finalPos);
@@ -514,6 +531,9 @@ export function useGestureInteraction() {
                 }
             } else {
                 cursorPosRef.current = null;
+                if (zHoldRef.current) {
+                    zElongationRef.current?.handleGesturePinchUpdate?.(false, null, 0);
+                }
                 if (isGestureDrawingRef.current) {
                     isGestureDrawingRef.current = false;
                     finalizeDrawing();
@@ -609,6 +629,8 @@ export function useGestureInteraction() {
         };
 
         const handlePointerDown = (event) => {
+            // Drawing is disabled in Z-Hold mode — Z-elongation hook owns pointer events
+            if (zHoldRef.current) return;
             if (event.button === 0) {
                 const rawPos = getPlaneIntersection(event);
                 if (rawPos) {
@@ -630,7 +652,14 @@ export function useGestureInteraction() {
         const handlePointerUp = () => {
             if (isPointerDrawingRef.current) {
                 isPointerDrawingRef.current = false;
-                finalizeDrawing();
+                if (!zHoldRef.current) {
+                    finalizeDrawing();
+                } else {
+                    // Hold mode activated mid-draw — discard the in-progress stroke
+                    activeDrawingRef.current = { active: false, type: 'FREEHAND', previewCorners: null, holdProgress: 0, shapePerfected: false };
+                    drawingPointsRef.current = [];
+                    clearShapeHoldTimer();
+                }
             }
         };
 

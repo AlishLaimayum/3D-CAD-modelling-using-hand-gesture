@@ -16,7 +16,8 @@ import { create } from 'zustand';
 import { cadCommandManager } from '../cad/CommandManager';
 import { 
     CreateCADObjectCommand, 
-    ClearCADObjectsCommand 
+    ClearCADObjectsCommand,
+    UpdateCADObjectCommand
 } from '../cad/commands/CADCommands';
 
 export const useCadStore = create((set, get) => {
@@ -41,10 +42,10 @@ export const useCadStore = create((set, get) => {
         // WORKING PLANE STATE
         // ---------------------------------------------
         planeLocked: false,
-        activePreset: 'TOP',
-        planeRotation: [0, 0, 0],
+        activePreset: 'XY',
+        planeRotation: [Math.PI / 2, 0, 0],
         planePosition: [0, 0, 0],
-        activePlaneNormal: [0, 1, 0],
+        activePlaneNormal: [0, 0, 1],
         activePlaneOrigin: [0, 0, 0],
 
         // ---------------------------------------------
@@ -69,6 +70,11 @@ export const useCadStore = create((set, get) => {
         canUndo: false,
         canRedo: false,
         diagnosticsEnabled: false,
+
+        // ---------------------------------------------
+        // Z-AXIS ELONGATION HOLD MODE
+        // ---------------------------------------------
+        zHoldModeEnabled: false,
 
         // =============================================
         // ACTIONS & SETTERS (WITH DEDUPLICATION)
@@ -95,35 +101,62 @@ export const useCadStore = create((set, get) => {
         setPlaneRotation: (rotation) => set({ planeRotation: rotation }),
         setPlanePosition: (position) => set({ planePosition: position }),
 
+        toggleZHoldMode: () => set((state) => ({ zHoldModeEnabled: !state.zHoldModeEnabled })),
+
         cameraTargetPosition: null,
+        cameraTargetUp: null,
 
         setCameraTargetPosition: (pos) => set({ cameraTargetPosition: pos }),
+        setCameraTargetUp: (up) => set({ cameraTargetUp: up }),
 
         setPresetPlane: (preset) => set((state) => {
             let rot = [0, 0, 0];
             let camPos = [6, 6, 6];
+            let camUp = [0, 1, 0];
+            let normal = [0, 0, 1];
 
-            if (preset === 'FRONT') {
+            const px = state.planePosition[0];
+            const py = state.planePosition[1];
+            const pz = state.planePosition[2];
+
+            if (preset === 'XY') {
+                // XY plane: normal = +Z [0, 0, 1]
+                // The plane is facing the viewer directly like a sheet of paper.
+                // X (Red) is horizontal, Y (Green) is vertical, Z (Blue) points towards camera.
                 rot = [Math.PI / 2, 0, 0];
-                // Looking straight at the XY plane along +Z
-                camPos = [state.planePosition[0], state.planePosition[1], 8];
-            } else if (preset === 'SIDE') {
-                rot = [0, 0, Math.PI / 2];
-                // Looking straight at the YZ plane along +X
-                camPos = [8, state.planePosition[1], state.planePosition[2]];
-            } else if (preset === 'TOP') {
+                normal = [0, 0, 1];
+                camPos = [px, py, pz + 9];
+                camUp = [0, 1, 0];
+            } else if (preset === 'YZ') {
+                // YZ plane: normal = +X [1, 0, 0]
+                // The plane is facing the viewer directly like a sheet of paper.
+                // Z (Blue) is horizontal, Y (Green) is vertical, X (Red) points towards camera.
+                rot = [0, 0, -Math.PI / 2];
+                normal = [1, 0, 0];
+                camPos = [px + 9, py, pz];
+                camUp = [0, 1, 0];
+            } else if (preset === 'XZ') {
+                // XZ plane: normal = +Y [0, 1, 0]
+                // The plane is facing the viewer directly like a sheet of paper.
+                // X (Red) is horizontal, Z (Blue) is vertical, Y (Green) points towards camera.
                 rot = [0, 0, 0];
-                // True top view looking straight down along -Y
-                camPos = [state.planePosition[0], 9, state.planePosition[2] + 0.0001];
+                normal = [0, 1, 0];
+                camPos = [px, py + 9, pz + 0.0001];
+                camUp = [0, 0, -1];
             } else if (preset === 'ISO') {
-                rot = [Math.PI / 4, Math.PI / 4, 0];
-                camPos = [6, 6, 6];
+                // Isometric 3D angle
+                rot = [0, 0, 0];
+                normal = [0, 1, 0];
+                camPos = [px + 7, py + 7, pz + 7];
+                camUp = [0, 1, 0];
             }
 
             return { 
                 planeRotation: rot, 
                 activePreset: preset,
-                cameraTargetPosition: camPos
+                activePlaneNormal: normal,
+                cameraTargetPosition: camPos,
+                cameraTargetUp: camUp
             };
         }),
 
@@ -209,6 +242,28 @@ export const useCadStore = create((set, get) => {
             cadObjects: state.cadObjects.filter((o) => o.id !== id) 
         })),
         internalSetObjects: (objects) => set({ cadObjects: objects }),
+        internalUpdateObject: (id, props) => set((state) => ({
+            cadObjects: state.cadObjects.map((o) => o.id === id ? { ...o, ...props } : o)
+        })),
+
+        /**
+         * Update a CAD object's transform properties with undo support.
+         * Used by Z-axis elongation and similar transforms.
+         */
+        updateCADObject: (objectId, newProps) => {
+            const current = get().cadObjects.find((o) => o.id === objectId);
+            if (!current) return;
+            const oldProps = {};
+            Object.keys(newProps).forEach((k) => { oldProps[k] = current[k]; });
+            const storeApi = {
+                internalAddObject: get().internalAddObject,
+                internalRemoveObject: get().internalRemoveObject,
+                internalSetObjects: get().internalSetObjects,
+                internalUpdateObject: get().internalUpdateObject
+            };
+            const command = new UpdateCADObjectCommand(objectId, oldProps, newProps, storeApi);
+            cadCommandManager.execute(command);
+        },
 
         // ---------------------------------------------
         // LEGACY BACKWARDS-COMPATIBILITY ALIASES
