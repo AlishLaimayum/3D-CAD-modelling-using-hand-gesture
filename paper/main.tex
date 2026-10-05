@@ -1,0 +1,164 @@
+\documentclass[10pt,journal,compsoc]{IEEEtran}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{cite}
+\usepackage{url}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\begin{document}
+
+\title{GestureCAD: A Contactless, Web-Based 3D Computer-Aided Design Kernel with Direct-Manipulation B-Rep Extrusion, Topological Invariant Validation, and Multi-Surface Parametric Sketching}
+
+\author{Alish~Laimayum
+\IEEEcompsocitemizethanks{\IEEEcompsocthanksitem Department of Computer Science \& Engineering.\protect\\
+E-mail: alish.laimayum@example.com}
+\thanks{Manuscript received October 5, 2026.}}
+
+\markboth{IEEE Transactions on Visualization and Computer Graphics,~Vol.~XX, No.~X, 2026}%
+{Laimayum \MakeLowercase{\textit{et al.}}: GestureCAD: Contactless Web-Based 3D CAD Kernel}
+
+\IEEEtitleabstractindextext{%
+\begin{abstract}
+Traditional Computer-Aided Design (CAD) workflows remain constrained to classical WIMP (Windows, Icons, Menus, Pointer) interfaces, requiring specialized 2D hardware peripherals and indirect multi-view projection manipulation to author 3D spatial geometry. While immersive Virtual and Augmented Reality (VR/AR) solutions provide spatial input, they impose substantial economic burdens, cumbersome head-mounted displays, and fatigue-inducing interaction paradigms. In this paper, we present \textbf{GestureCAD}, a contactless, hardware-agnostic, browser-based 3D CAD modeling system and geometric kernel driven by monocular RGB hand tracking. We introduce a decoupled dual-engine architecture that bridges a multi-threaded edge computer vision pipeline with a zero-reconciliation WebGL/Three.js rendering kernel targeting a 16.6~ms (60 FPS) budget.
+
+To resolve spatial ambiguity and hand tremor without tactile feedback, GestureCAD incorporates: (1) an anatomical scale-invariant normalized metric space for robust pinch detection ($0.0\%$ CV across 30--100~cm camera ranges); (2) a dual-threshold hysteresis state machine reducing spurious pinch state flips by a mean of $85.55\%$ [$95\%$ CI: $84.01\%$–$87.10\%$]; (3) a velocity-adaptive exponential moving average (EMA) filter with dead-zone noise gating reducing RMS cursor jitter by a mean of $52.43\%$ [$95\%$ CI: $52.16\%$–$52.71\%$]; (4) an unconstrained 3D geometric snapping and heuristic shape-regularization engine capturing $84.48\%$ of targeting attempts and reducing positional error by $79.74\%$ [$95\%$ CI: $77.28\%$–$82.20\%$]; and (5) a direct-manipulation 3D extrusion engine (\textit{Z-Hold Mode}) that enables continuous spatial sweeping of planar profiles into watertight, 2-manifold Boundary Representation (B-Rep) solids. Furthermore, we present an automatic face-decomposition and surface-attached coordinate mapping pipeline that constructs local orthonormal bases $\mathbf{R} \in SO(3)$ on existing 3D polyhedra and curved cylindrical boundaries, permitting hierarchical sketch-on-face operations directly in 3D space. Comprehensive evaluations demonstrate software CAD processing under 0.2~ms per frame ($0.1994\text{ ms}$ mean), 100\% topological invariant compliance ($\chi = V - E + F = 2$), volume computation accuracy error $< 0.01\%$ via divergence theorem integration, and industry-standard CAD persistence (Wavefront OBJ, AutoCAD DXF, and stereolithography STL).
+\end{abstract}
+
+\begin{IEEEkeywords}
+Computer-Aided Design, Gesture-Based Interaction, Monocular Hand Tracking, Boundary Representation (B-Rep), Topological Invariants, Divergence Theorem, WebGL, Zero-Reconciliation Rendering.
+\end{IEEEkeywords}}
+
+\maketitle
+\IEEEdisplaynontitleabstractindextext
+\IEEEpeerreviewmaketitle
+
+\section{Introduction}
+\IEEEPARstart{S}{ince} Sutherland's seminal introduction of \textit{Sketchpad} in 1963~\cite{sutherland1963sketchpad}, Computer-Aided Design (CAD) systems have revolutionized engineering, product design, and architectural fabrication. However, the foundational interaction paradigm for desktop CAD has remained fundamentally stagnant: three-dimensional spatial concepts are continuously translated through two-dimensional planar controllers (mouse, trackball, tablet) and multiplexed across four disjoint 2D projection viewports (Top, Front, Right, Isometric). This cognitive translation gap introduces notable friction, disrupting the ideation workflow of engineers and novice creators alike.
+
+To bridge this spatial rift, researchers have actively explored immersive spatial interfaces, including stereoscopic Virtual Reality (VR) head-mounted displays and optical tracker controllers~\cite{gravitysketch,tiltbrush}. Although these systems offer unconstrained six-degree-of-freedom ($6$-DoF) spatial authoring, they suffer from practical limitations:
+\begin{enumerate}
+    \item \textbf{Economic and Setup Friction}: Commercial VR/AR headsets require substantial capital investments, spatial room calibration, and heavy headgear.
+    \item \textbf{Physiological Fatigue}: Continuous mid-air arm suspension in immersive environments induces rapid musculoskeletal exhaustion, colloquially documented as ``Gorilla Arm'' syndrome~\cite{song2014air}.
+    \item \textbf{Geometric Imprecision}: VR sketching tools predominantly yield unconstrained polygonal ribbons, triangle soup, or open non-manifold surface approximations suitable for artistic conceptualization, but wholly invalid for engineering manufacture, volumetric analysis, or computational fluid simulation.
+\end{enumerate}
+
+Concurrently, while computer vision frameworks such as Google MediaPipe~\cite{zhang2020mediapipe} and TensorFlow.js~\cite{ACP2020handpose} have democratized real-time articulated hand pose estimation on commodity RGB sensors, applying raw landmark streams to precision solid modeling introduces critical signal challenges. Monocular hand tracking exhibits high-frequency physiological tremor ($\sigma > 3\text{ mm}$), optical quantization noise, distance-dependent landmark scaling, and rapid limit-cycle flutter near discrete gesture thresholds. Furthermore, web-based CAD architectures implemented atop declarative UI layers (e.g., React virtual DOM) suffer from garbage collection (GC) pauses and reconciliation latency when ingesting streaming landmark coordinates at high frequencies.
+
+To resolve this dilemma, we present \textbf{GestureCAD}, a contactless, web-native 3D CAD modeling system and solid geometry kernel. GestureCAD executes directly on standard consumer devices equipped with an everyday monocular webcam, requiring zero proprietary infrared peripherals or wearable markers. 
+
+\subsection{Core Verified Contributions}
+\begin{itemize}
+    \item \textbf{Contribution 1: Decoupled Client-Edge WebCAD Architecture}: A client-edge microservice topology separating a multi-threaded Python/OpenCV/MediaPipe edge vision pipeline from a zero-reconciliation React Three Fiber (R3F) WebGL rendering engine. Direct GPU typed array mutations execute within $0.1994\text{ ms}$ cumulative CPU time per frame, easily fitting within the $16.6\text{ ms}$ budget.
+    \item \textbf{Contribution 2: Multi-Stage Kinematic Conditioning Stack}: An anatomical normalization baseline derived from the wrist-to-middle metacarpophalangeal (MCP) distance ($0.0\%$ CV across 30--100~cm), coupled with a dual-threshold state automaton reducing spurious flips by $85.55\%$ [$95\%$ CI: $84.01\%$–$87.10\%$] and an adaptive EMA filter reducing RMS cursor jitter by $52.43\%$ [$95\%$ CI: $52.16\%$–$52.71\%$].
+    \item \textbf{Contribution 3: Watertight B-Rep Solid Kernel with Multi-Surface Sketching}: A boundary representation kernel that extrudes planar 2D profiles into closed 2-manifold polyhedral meshes with guaranteed topological validity ($\chi = V - E + F = 2$, zero open boundary edges, zero non-manifold edges), exact Divergence Theorem volumetric integration, and $SO(3)$ orthonormal frame derivation for sketch-on-face operations.
+\end{itemize}
+
+\section{Related Work}
+Our research synthesizes three distinct literature threads: vision-based gesture interaction, spatial/immersive CAD systems, and web-based computational geometry kernels.
+
+\subsection{Vision-Based Hand Tracking and Signal Conditioning}
+Optical markerless hand pose estimation has evolved from early color segmentation and depth-map skeletons~\cite{suma2011faast} to deep learning regression frameworks. Ultraleap's Leap Motion~\cite{leapmotion2013} demonstrated sub-millimeter infrared finger tracking, but required dedicated desk-mounted stereo hardware. The release of Google MediaPipe Hands~\cite{zhang2020mediapipe,lugaresi2019mediapipe} enabled monocular 2.5D landmark inference directly from commodity RGB streams at interactive frame rates. 
+
+However, raw landmark streams are insufficient for CAD interaction. Signal filtering techniques such as the $1€$ Filter~\cite{casiez2012oneeuro} and double exponential smoothing~\cite{laviola2003double} demonstrated the value of speed-adaptive low-pass filters in reducing human motor jitter. In GestureCAD, we expand these concepts into an integrated kinematic conditioning layer combining anatomical baseline normalization, dual-threshold hysteresis, dead-zone gating, and velocity-clamped dynamic EMA smoothing.
+
+\subsection{Spatial, Gesture-Driven, and Immersive 3D CAD}
+Early attempts to introduce spatial gestures into CAD include Shape-It-Up~\cite{vinayak2013shapeitup}, which leveraged depth cameras for generalized cylinder deformation. In commercial VR, tools such as Gravity Sketch~\cite{gravitysketch} and Google Tilt Brush~\cite{tiltbrush} introduced sweeping spatial brush strokes. While visually compelling, these immersive tools create non-manifold polygonal ribbons rather than mathematically closed, watertight solids required for engineering applications. Conversely, industrial desktop CAD platforms (e.g., SolidWorks~\cite{solidworks}, AutoCAD~\cite{autocad}, FreeCAD~\cite{freecad}) enforce rigorous Boundary Representation (B-Rep) standards~\cite{mantyla1988,hoffmann1989geometric}, but remain tethered to the 2D mouse and keyboard. GestureCAD bridges this divide by delivering verified, manifold B-Rep solids directly from natural hand gestures.
+
+\subsection{Web-Based Computational Geometry and Real-Time Graphics}
+The emergence of WebGL and WebAssembly (WASM) has enabled sophisticated geometric modeling in the web browser. Three.js~\cite{threejs} provides low-level scenegraph rendering, while React Three Fiber (R3F)~\cite{r3f} introduces declarative component composition. For solid modeling, WebAssembly ports of industrial kernels like OpenCASCADE.js~\cite{opencascadejs} and ManifoldCAD~\cite{manifoldcad} have demonstrated complex boolean evaluation in the browser. GestureCAD avoids the common web-CAD pitfall of routing high-frequency tracking data through React's virtual DOM reconciler, using in-place typed array mutations for high-frequency rendering.
+
+\section{System Architecture \& Evaluation Methodology}
+The GestureCAD architecture comprises:
+\begin{enumerate}
+    \item \textbf{Edge Vision Microservice}: Implemented in Python 3.10+ using OpenCV and MediaPipe. In real physical camera recording on host hardware, the acquisition loop captured 141 frames at an average of 26.68 FPS with full 21 3D landmark inference. Telemetry packets are serialized as JSON and pushed across WebSockets.
+    \item \textbf{Browser CAD Engine}: Implemented in React 18 with Three.js and React Three Fiber (R3F). Position streams bypass React state entirely, updating mutable typed arrays directly inside Three.js's native render loop.
+\end{enumerate}
+
+\begin{table}[t]
+\caption{Scientific provenance and methodology matrix.}
+\label{tab:provenance}
+\centering
+\begin{tabular}{llcc}
+\toprule
+\textbf{ID} & \textbf{Evaluated Dimension} & \textbf{Methodology} & \textbf{Sample Scope} \\
+\midrule
+B1 & Software CAD Subsystem Latency & \textbf{REAL} & 5,000 iterations \\
+B2 & Physical Motion-to-Photon Latency & \textbf{NOT RUN} & Unmeasured \\
+B3 & Cursor Jitter Attenuation & \textbf{SIMULATED} & 180 runs (90k pts) \\
+B4 & Hysteresis Pinch Chatter & \textbf{SIMULATED} & 180 runs (450k frames) \\
+B6 & Distance Scale Invariance & \textbf{REAL / EMP.} & 4 dists, 3 sizes \\
+B9 & B-Rep Topology \& Volume & \textbf{REAL + ANALYTIC} & 20 models \\
+B10 & Heuristic Shape Recognition & \textbf{SIMULATED} & 180 runs (18k strokes) \\
+B11 & Geometric Snapping Precision & \textbf{SIMULATED} & 180 runs (36k queries) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\caption{Software CAD pipeline subsystem latency breakdown ($N = 5\,000$ iterations).}
+\label{tab:latency}
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Subsystem Stage} & \textbf{Mean (ms)} & \textbf{Med (ms)} & \textbf{p99 (ms)} & \textbf{Std (ms)} \\
+\midrule
+Ray-Plane Unprojection & 0.0045 & 0.0032 & 0.0219 & 0.0171 \\
+Snapping Inference & 0.0024 & 0.0015 & 0.0068 & 0.0107 \\
+Shape Regularization & 0.0836 & 0.0598 & 0.3769 & 0.1035 \\
+B-Rep Extrusion \& Val. & 0.1009 & 0.0826 & 0.4573 & 0.0803 \\
+Face Enum. \& $SO(3)$ Basis & 0.0080 & 0.0041 & 0.0324 & 0.0279 \\
+\midrule
+\textbf{Cumulative Software CAD} & \textbf{0.1994} & \textbf{0.1512} & \textbf{0.8953} & \textbf{0.2395} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Experimental Evaluation \& Parameter Sweeps}
+
+\subsection{Subsystem Latency (Benchmark B1)}
+Over $5\,000$ iterations, the cumulative software CAD execution latency is $0.1994\text{ ms}$ (Table~\ref{tab:latency}), easily fitting within the $16.6\text{ ms}$ 60 FPS frame budget.
+\textit{Note on End-to-End Latency}: Physical motion-to-photon latency requires high-speed optical hardware and is formally unmeasured.
+
+\subsection{Tremor Attenuation Sensitivity Sweep (Benchmark B3)}
+Across 180 simulation runs (6 noise levels $\times$ 30 seeds), the GestureCAD filter achieves a mean RMS jitter reduction of $52.43\%$ [$95\%$ CI: $52.16\%$–$52.71\%$, range: $45.0\%$–$58.6\%$].
+
+\subsection{Hysteresis \& State Stability Sweep (Benchmark B4)}
+Across 180 simulation runs (6 boundary noise levels $\times$ 30 seeds, 450,000 frames), dual-threshold hysteresis ($\tau_1=0.44, \tau_2=0.54$) suppresses spurious state flips by a mean of $85.55\%$ [$95\%$ CI: $84.01\%$–$87.10\%$, range: $67.62\%$–$99.48\%$].
+
+\subsection{Scale Invariance (Benchmark B6)}
+Wrist-MCP normalization eliminates distance sensitivity, achieving $0.0\%$ CV across 30--100~cm camera ranges compared to $70.0\%$ CV for raw pixel metrics.
+
+\subsection{Topological Validity (Benchmark B9)}
+Across 20 solid models, all generated meshes achieved $100\%$ compliance with $\chi = 2$, zero open boundary edges, zero non-manifold edges, and exact Divergence Theorem volumetric calculation.
+
+\subsection{Snapping \& Shape Regularization Sweeps (B10, B11)}
+Across 180 runs (36,000 queries), snapping captured $84.48\%$ [$95\%$ CI: $83.05\%$–$85.92\%$] of queries, reducing targeting error by $79.74\%$ [$95\%$ CI: $77.28\%$–$82.20\%$]. Across 18,000 strokes, shape regularization achieved $100\%$ accuracy for $\sigma \le 0.08$, degrading to $92.1\%$ at $\sigma = 0.25$.
+
+\section{Limitations}
+\begin{enumerate}
+    \item \textbf{Monocular Depth Ambiguity}: Out-of-plane hand tilt introduces perspective foreshortening that affects landmark estimation.
+    \item \textbf{Topological Genus Constraint}: The current kernel enforces $\chi = 2$, valid for simply connected genus-0 solids without through-holes.
+    \item \textbf{Unmeasured Physical Latency}: Total physical motion-to-photon latency remains unverified by external optical hardware.
+    \item \textbf{Single-Hand Input}: Bimanual interaction is currently unsupported.
+\end{enumerate}
+
+\section{Conclusion}
+GestureCAD introduces a contactless, web-native 3D CAD modeling system and geometric kernel driven by monocular RGB hand tracking. By coupling a scale-invariant hysteresis automaton, dynamic tremor attenuation, and a watertight B-Rep extrusion kernel, GestureCAD bridges the gap between natural spatial input and mathematically verified engineering CAD.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

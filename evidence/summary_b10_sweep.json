@@ -1,0 +1,369 @@
+{
+  "benchmark_id": "B10_SENSITIVITY_SWEEP",
+  "provenance": "SIMULATED (Heuristic classifier against synthetic distorted strokes)",
+  "sweep_parameters": {
+    "noise_levels_tested": [
+      0.04,
+      0.08,
+      0.12,
+      0.16,
+      0.2,
+      0.25
+    ],
+    "seeds_per_level": 30,
+    "total_runs": 180,
+    "strokes_per_run": 100,
+    "total_strokes_evaluated": 18000
+  },
+  "results_by_noise_level": {
+    "noise_0.04": {
+      "noise_level": 0.04,
+      "overall_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "line_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "circle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "rectangle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "triangle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      }
+    },
+    "noise_0.08": {
+      "noise_level": 0.08,
+      "overall_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "line_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "circle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "rectangle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "triangle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      }
+    },
+    "noise_0.12": {
+      "noise_level": 0.12,
+      "overall_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "line_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "circle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "rectangle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "triangle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      }
+    },
+    "noise_0.16": {
+      "noise_level": 0.16,
+      "overall_accuracy": {
+        "mean": 99.73,
+        "std": 0.52,
+        "median": 100,
+        "ci95": [
+          99.55,
+          99.92
+        ],
+        "min": 98,
+        "max": 100
+      },
+      "line_accuracy": {
+        "mean": 98.93,
+        "std": 2.08,
+        "median": 100,
+        "ci95": [
+          98.19,
+          99.68
+        ],
+        "min": 92,
+        "max": 100
+      },
+      "circle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "rectangle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      },
+      "triangle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      }
+    },
+    "noise_0.2": {
+      "noise_level": 0.2,
+      "overall_accuracy": {
+        "mean": 97.5,
+        "std": 1.38,
+        "median": 97.5,
+        "ci95": [
+          97,
+          98
+        ],
+        "min": 93,
+        "max": 100
+      },
+      "line_accuracy": {
+        "mean": 93.47,
+        "std": 4.64,
+        "median": 94,
+        "ci95": [
+          91.81,
+          95.13
+        ],
+        "min": 80,
+        "max": 100
+      },
+      "circle_accuracy": {
+        "mean": 97.2,
+        "std": 2.81,
+        "median": 96,
+        "ci95": [
+          96.19,
+          98.21
+        ],
+        "min": 92,
+        "max": 100
+      },
+      "rectangle_accuracy": {
+        "mean": 99.33,
+        "std": 1.84,
+        "median": 100,
+        "ci95": [
+          98.67,
+          99.99
+        ],
+        "min": 92,
+        "max": 100
+      },
+      "triangle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      }
+    },
+    "noise_0.25": {
+      "noise_level": 0.25,
+      "overall_accuracy": {
+        "mean": 92.07,
+        "std": 2.92,
+        "median": 93,
+        "ci95": [
+          91.02,
+          93.11
+        ],
+        "min": 85,
+        "max": 97
+      },
+      "line_accuracy": {
+        "mean": 78.67,
+        "std": 8.68,
+        "median": 80,
+        "ci95": [
+          75.56,
+          81.77
+        ],
+        "min": 60,
+        "max": 96
+      },
+      "circle_accuracy": {
+        "mean": 92.53,
+        "std": 4.42,
+        "median": 92,
+        "ci95": [
+          90.95,
+          94.12
+        ],
+        "min": 84,
+        "max": 100
+      },
+      "rectangle_accuracy": {
+        "mean": 97.07,
+        "std": 3.14,
+        "median": 96,
+        "ci95": [
+          95.94,
+          98.19
+        ],
+        "min": 88,
+        "max": 100
+      },
+      "triangle_accuracy": {
+        "mean": 100,
+        "std": 0,
+        "median": 100,
+        "ci95": [
+          100,
+          100
+        ],
+        "min": 100,
+        "max": 100
+      }
+    }
+  },
+  "verdict": "Evaluated 18000 strokes across noise levels 0.04-0.25. Under low noise (0.04-0.08), mean accuracy is 100% - 100%; under moderate noise (0.12-0.16), accuracy is 100% - 99.73%; under extreme distortion (0.20-0.25), accuracy degrades to 97.5% - 92.07%."
+}

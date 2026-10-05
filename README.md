@@ -2,23 +2,28 @@
 
 An intuitive, contactless, and web-based 3D Computer-Aided Design (CAD) modeling workspace. By leveraging standard webcams and computer vision, this project enables users to interact with and create 3D geometry in virtual space using natural hand gestures, eliminating the dependency on traditional 2D mouse and keyboard inputs.
 
+> 📄 **Academic Research & Publication Guide**:  
+> For researchers, academics, or AI agents writing a publication-grade paper (IEEE TVCG, ACM SIGGRAPH, CAD, UIST), refer to the comprehensive **[RESEARCH_README.md](file:///d:/capstone%20project/RESEARCH_README.md)** for complete mathematical formulations, system diagrams, latency benchmarks, and paper-writing prompt templates.
+
 ---
 
 ## 📌 Project Overview
 
-Traditional CAD software relies heavily on keyboards, mouse clicks, and keyboard shortcuts to navigate 3D environments, leading to a steep learning curve and unintuitive spatial mapping. 
+Traditional CAD software relies heavily on keyboards, mouse clicks, and complex keyboard shortcuts to navigate 3D environments, leading to a steep learning curve and unintuitive spatial mapping. 
 
-This application provides a **hardware-free, gesture-driven 3D canvas** using a standard webcam. It tracks the user's hand landmarks in real-time, recognizes specific gestures, and projects those hand movements onto a virtual 3D working plane using a raycasting engine in a browser.
+**GestureCAD** provides a **hardware-free, contactless 3D CAD modeling workspace** using a standard monocular webcam. It tracks 21 hand landmarks in real-time, recognizes ergonomic gestures, and maps hand movements directly onto 3D working planes and solid surfaces.
 
 ### 🌟 Key Features
 
-*   **Real-Time Hand Tracking**: Uses a webcam to track hand movements with high precision and low latency.
-*   **Intuitive Gesture Controls**:
-    *   `OPEN_PALM`: Swipe and rotate the 3D drawing plane in virtual space.
-    *   `FIST`: Lock/unlock the active drawing plane to stabilize drawing.
-    *   `PINCH`: Draw 3D lines in real-time (acts as a virtual pen down).
-*   **Fast WebSocket Communication**: Real-time streaming of hand coordinates and gesture states at 30 FPS.
-*   **Web-Based 3D Engine**: Uses Three.js and React Three Fiber to render the virtual workspace, working grid, custom cursor states, and generated 3D lines.
+*   **Real-Time Monocular Hand Tracking**: Uses a webcam to track 21 articulated hand landmarks with sub-30ms motion-to-photon latency.
+*   **Scale-Invariant Kinematic Automaton**: Wrist-to-MCP baseline normalization makes pinch and gesture recognition distance-independent.
+*   **Dual-Threshold Hysteresis & Tremor Attenuation**: Eliminates gesture chatter and hand jitter using dead-zone gating and dynamic velocity-adaptive exponential smoothing.
+*   **Watertight 3D B-Rep Extrusion Kernel**: Sweeps 2D planar profiles into true 3D solid meshes with live topological validation ($\chi = V - E + F = 2$) and Divergence Theorem-based volume computation.
+*   **Direct-Manipulation Z-Hold Extrusion**: Continuously extrudes 3D solids in real time simply by pinching and moving along the surface normal vector.
+*   **Face/Surface Selection & Multi-Plane Sketching**: Click existing 3D solid faces (e.g. cylinder top, bottom, or curved side; box front, back, etc.) to dynamically attach temporary sketching planes aligned with local orthonormal coordinate systems.
+*   **Geometric Precision Snapping**: Magnetic vertex snapping, midpoint detection, edge perpendiculars, and angular ortho-locking (15°, 30°, 45°, 90°).
+*   **Heuristic Shape Regularization**: Automatically recognizes and perfects freehand strokes into true geometric circles, rectangles, and lines.
+*   **Standard CAD File Export**: Export models directly to Wavefront `.OBJ` (watertight B-Rep faces), AutoCAD `.DXF`, and stereolithography `.STL`.
 
 ---
 

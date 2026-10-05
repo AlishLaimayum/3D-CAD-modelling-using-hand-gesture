@@ -1,0 +1,247 @@
+{
+  "benchmark_id": "B4_SENSITIVITY_SWEEP",
+  "provenance": "SIMULATED (Stochastic state walk within decision boundary)",
+  "sweep_parameters": {
+    "noise_sigmas_tested": [
+      0.015,
+      0.03,
+      0.045,
+      0.06,
+      0.075,
+      0.09
+    ],
+    "seeds_per_level": 30,
+    "total_runs": 180,
+    "frames_per_trial": 2500
+  },
+  "results_by_noise_level": {
+    "noise_sigma_0.015": {
+      "noise_sigma": 0.015,
+      "naive_flips": {
+        "mean": 541.7,
+        "std": 17.75,
+        "median": 542,
+        "ci95": [
+          535.35,
+          548.05
+        ],
+        "min": 503,
+        "max": 574
+      },
+      "hyst_flips": {
+        "mean": 3.07,
+        "std": 0.37,
+        "median": 3,
+        "ci95": [
+          2.94,
+          3.2
+        ],
+        "min": 3,
+        "max": 5
+      },
+      "reduction_pct": {
+        "mean": 99.43,
+        "std": 0.07,
+        "median": 99.45,
+        "ci95": [
+          99.41,
+          99.46
+        ],
+        "min": 99.06,
+        "max": 99.48
+      }
+    },
+    "noise_sigma_0.03": {
+      "noise_sigma": 0.03,
+      "naive_flips": {
+        "mean": 902.93,
+        "std": 25.31,
+        "median": 900,
+        "ci95": [
+          893.88,
+          911.99
+        ],
+        "min": 857,
+        "max": 942
+      },
+      "hyst_flips": {
+        "mean": 26.23,
+        "std": 5.61,
+        "median": 25,
+        "ci95": [
+          24.23,
+          28.24
+        ],
+        "min": 17,
+        "max": 38
+      },
+      "reduction_pct": {
+        "mean": 97.09,
+        "std": 0.65,
+        "median": 97.19,
+        "ci95": [
+          96.86,
+          97.32
+        ],
+        "min": 95.67,
+        "max": 98.13
+      }
+    },
+    "noise_sigma_0.045": {
+      "noise_sigma": 0.045,
+      "naive_flips": {
+        "mean": 1067.1,
+        "std": 26.31,
+        "median": 1064,
+        "ci95": [
+          1057.69,
+          1076.51
+        ],
+        "min": 1028,
+        "max": 1130
+      },
+      "hyst_flips": {
+        "mean": 118.6,
+        "std": 9.94,
+        "median": 117,
+        "ci95": [
+          115.04,
+          122.16
+        ],
+        "min": 103,
+        "max": 139
+      },
+      "reduction_pct": {
+        "mean": 88.88,
+        "std": 0.96,
+        "median": 89.08,
+        "ci95": [
+          88.53,
+          89.23
+        ],
+        "min": 86.58,
+        "max": 90.44
+      }
+    },
+    "noise_sigma_0.06": {
+      "noise_sigma": 0.06,
+      "naive_flips": {
+        "mean": 1141.13,
+        "std": 26.45,
+        "median": 1141,
+        "ci95": [
+          1131.67,
+          1150.6
+        ],
+        "min": 1071,
+        "max": 1191
+      },
+      "hyst_flips": {
+        "mean": 217.1,
+        "std": 16.74,
+        "median": 217,
+        "ci95": [
+          211.11,
+          223.09
+        ],
+        "min": 191,
+        "max": 251
+      },
+      "reduction_pct": {
+        "mean": 80.97,
+        "std": 1.53,
+        "median": 81.2,
+        "ci95": [
+          80.42,
+          81.51
+        ],
+        "min": 77.87,
+        "max": 83.6
+      }
+    },
+    "noise_sigma_0.075": {
+      "noise_sigma": 0.075,
+      "naive_flips": {
+        "mean": 1162.73,
+        "std": 26,
+        "median": 1162,
+        "ci95": [
+          1153.43,
+          1172.04
+        ],
+        "min": 1120,
+        "max": 1233
+      },
+      "hyst_flips": {
+        "mean": 285.93,
+        "std": 12.03,
+        "median": 287,
+        "ci95": [
+          281.63,
+          290.24
+        ],
+        "min": 263,
+        "max": 310
+      },
+      "reduction_pct": {
+        "mean": 75.39,
+        "std": 1.22,
+        "median": 75.28,
+        "ci95": [
+          74.96,
+          75.83
+        ],
+        "min": 73.73,
+        "max": 77.95
+      }
+    },
+    "noise_sigma_0.09": {
+      "noise_sigma": 0.09,
+      "naive_flips": {
+        "mean": 1199.63,
+        "std": 22.31,
+        "median": 1197.5,
+        "ci95": [
+          1191.65,
+          1207.62
+        ],
+        "min": 1155,
+        "max": 1254
+      },
+      "hyst_flips": {
+        "mean": 341.07,
+        "std": 18.51,
+        "median": 342,
+        "ci95": [
+          334.44,
+          347.69
+        ],
+        "min": 305,
+        "max": 387
+      },
+      "reduction_pct": {
+        "mean": 71.56,
+        "std": 1.62,
+        "median": 71.52,
+        "ci95": [
+          70.98,
+          72.14
+        ],
+        "min": 67.62,
+        "max": 74.58
+      }
+    }
+  },
+  "aggregate_reduction_pct": {
+    "mean": 85.55,
+    "std": 10.55,
+    "median": 85.09,
+    "ci95": [
+      84.01,
+      87.1
+    ],
+    "min": 67.62,
+    "max": 99.48
+  },
+  "verdict": "Across 180 runs (noise sigma 0.015-0.090), GestureCAD dual-threshold hysteresis reduced spurious state flips by 85.55% [95% CI: 84.01% - 87.1%, range: 67.62% - 99.48%]"
+}

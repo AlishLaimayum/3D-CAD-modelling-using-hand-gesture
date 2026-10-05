@@ -1,0 +1,15 @@
+{
+  "benchmark_id": "B4",
+  "name": "Pinch False Activations & Hysteresis Ablation",
+  "total_frames_tested": 5000,
+  "noise_sigma": 0.045,
+  "naive_threshold": 0.48,
+  "naive_state_flips": 1990,
+  "naive_flip_rate_per_100_frames": 39.8,
+  "hysteresis_start_threshold": 0.44,
+  "hysteresis_release_threshold": 0.54,
+  "hysteresis_state_flips": 157,
+  "hysteresis_flip_rate_per_100_frames": 3.14,
+  "flip_reduction_percent": 92.11,
+  "verdict": "92.1% reduction in spurious state transitions"
+}

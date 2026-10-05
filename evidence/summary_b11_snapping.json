@@ -1,0 +1,11 @@
+{
+  "benchmark_id": "B11",
+  "name": "Snapping Engine Effectiveness & Precision Improvement",
+  "trials_evaluated": 500,
+  "snap_radius": 0.25,
+  "successful_snap_rate_pct": 92,
+  "mean_unsnapped_error_m": 0.1063,
+  "mean_snapped_error_m": 0.0074,
+  "error_reduction_pct": 93.01,
+  "verdict": "Snapping reduced positional targeting error by 93.0% (capture rate 92.0%)"
+}

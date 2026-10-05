@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-05T19:08:36+05:30",
+  "git_commit": "998d06799aa6ad35f809f5bccf53558b1ff0c1b7",
+  "os": "Microsoft Windows 11 Home Single Language (10.0.26200)",
+  "cpu": "11th Gen Intel(R) Core(TM) i7-1165G7 @ 2.80GHz",
+  "ram_gb": 15.77,
+  "gpu": "Intel(R) Iris(R) Xe Graphics",
+  "python_version": "Python 3.13.3",
+  "node_version": "v22.16.0",
+  "npm_version": "10.9.2",
+  "packages": {
+    "mediapipe": "0.10.14",
+    "opencv-python": "4.10.0.82",
+    "fastapi": "0.111.0",
+    "uvicorn": "0.30.1",
+    "websockets": "12.0",
+    "three": "0.160+",
+    "@react-three/fiber": "8.15+",
+    "zustand": "4.5+"
+  },
+  "webcam": {
+    "source": "Integrated / USB Monocular Webcam",
+    "capture_resolution": "640x480 / 1280x720",
+    "nominal_framerate_fps": 30
+  }
+}

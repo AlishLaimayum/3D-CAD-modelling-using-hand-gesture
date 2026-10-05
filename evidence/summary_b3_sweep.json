@@ -1,0 +1,247 @@
+{
+  "benchmark_id": "B3_SENSITIVITY_SWEEP",
+  "provenance": "SIMULATED (Spectral/Gaussian physiological tremor model)",
+  "sweep_parameters": {
+    "noise_levels_tested_mm": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "seeds_per_level": 30,
+    "total_runs": 180,
+    "samples_per_trial": 500
+  },
+  "results_by_noise_level": {
+    "noise_1mm": {
+      "noise_sigma_mm": 1,
+      "raw_rms_mm": {
+        "mean": 1.535,
+        "std": 0.017,
+        "median": 1.534,
+        "ci95": [
+          1.529,
+          1.541
+        ],
+        "min": 1.498,
+        "max": 1.572
+      },
+      "full_rms_mm": {
+        "mean": 0.747,
+        "std": 0.057,
+        "median": 0.74,
+        "ci95": [
+          0.726,
+          0.767
+        ],
+        "min": 0.636,
+        "max": 0.843
+      },
+      "reduction_pct": {
+        "mean": 51.346,
+        "std": 3.663,
+        "median": 51.45,
+        "ci95": [
+          50.035,
+          52.657
+        ],
+        "min": 44.977,
+        "max": 58.635
+      }
+    },
+    "noise_2mm": {
+      "noise_sigma_mm": 2,
+      "raw_rms_mm": {
+        "mean": 3.068,
+        "std": 0.045,
+        "median": 3.074,
+        "ci95": [
+          3.053,
+          3.084
+        ],
+        "min": 2.935,
+        "max": 3.137
+      },
+      "full_rms_mm": {
+        "mean": 1.445,
+        "std": 0.045,
+        "median": 1.438,
+        "ci95": [
+          1.429,
+          1.461
+        ],
+        "min": 1.363,
+        "max": 1.567
+      },
+      "reduction_pct": {
+        "mean": 52.903,
+        "std": 1.4,
+        "median": 52.858,
+        "ci95": [
+          52.402,
+          53.405
+        ],
+        "min": 49.571,
+        "max": 55.666
+      }
+    },
+    "noise_3mm": {
+      "noise_sigma_mm": 3,
+      "raw_rms_mm": {
+        "mean": 4.588,
+        "std": 0.069,
+        "median": 4.586,
+        "ci95": [
+          4.564,
+          4.613
+        ],
+        "min": 4.469,
+        "max": 4.743
+      },
+      "full_rms_mm": {
+        "mean": 2.166,
+        "std": 0.052,
+        "median": 2.158,
+        "ci95": [
+          2.147,
+          2.184
+        ],
+        "min": 2.085,
+        "max": 2.259
+      },
+      "reduction_pct": {
+        "mean": 52.801,
+        "std": 0.858,
+        "median": 52.6,
+        "ci95": [
+          52.494,
+          53.108
+        ],
+        "min": 51.305,
+        "max": 54.505
+      }
+    },
+    "noise_4mm": {
+      "noise_sigma_mm": 4,
+      "raw_rms_mm": {
+        "mean": 6.134,
+        "std": 0.11,
+        "median": 6.149,
+        "ci95": [
+          6.095,
+          6.174
+        ],
+        "min": 5.841,
+        "max": 6.323
+      },
+      "full_rms_mm": {
+        "mean": 2.895,
+        "std": 0.092,
+        "median": 2.904,
+        "ci95": [
+          2.862,
+          2.928
+        ],
+        "min": 2.58,
+        "max": 3.018
+      },
+      "reduction_pct": {
+        "mean": 52.81,
+        "std": 1.218,
+        "median": 52.724,
+        "ci95": [
+          52.374,
+          53.246
+        ],
+        "min": 50.815,
+        "max": 55.824
+      }
+    },
+    "noise_5mm": {
+      "noise_sigma_mm": 5,
+      "raw_rms_mm": {
+        "mean": 7.666,
+        "std": 0.157,
+        "median": 7.691,
+        "ci95": [
+          7.61,
+          7.723
+        ],
+        "min": 7.43,
+        "max": 8.141
+      },
+      "full_rms_mm": {
+        "mean": 3.633,
+        "std": 0.099,
+        "median": 3.602,
+        "ci95": [
+          3.597,
+          3.668
+        ],
+        "min": 3.479,
+        "max": 3.866
+      },
+      "reduction_pct": {
+        "mean": 52.612,
+        "std": 0.946,
+        "median": 52.516,
+        "ci95": [
+          52.273,
+          52.95
+        ],
+        "min": 51.05,
+        "max": 54.834
+      }
+    },
+    "noise_6mm": {
+      "noise_sigma_mm": 6,
+      "raw_rms_mm": {
+        "mean": 9.198,
+        "std": 0.156,
+        "median": 9.209,
+        "ci95": [
+          9.142,
+          9.254
+        ],
+        "min": 8.856,
+        "max": 9.614
+      },
+      "full_rms_mm": {
+        "mean": 4.405,
+        "std": 0.131,
+        "median": 4.393,
+        "ci95": [
+          4.358,
+          4.452
+        ],
+        "min": 4.162,
+        "max": 4.657
+      },
+      "reduction_pct": {
+        "mean": 52.11,
+        "std": 1.193,
+        "median": 52.263,
+        "ci95": [
+          51.683,
+          52.537
+        ],
+        "min": 49.323,
+        "max": 54.258
+      }
+    }
+  },
+  "aggregate_reduction_pct": {
+    "mean": 52.43,
+    "std": 1.879,
+    "median": 52.512,
+    "ci95": [
+      52.156,
+      52.705
+    ],
+    "min": 44.977,
+    "max": 58.635
+  },
+  "verdict": "Across 180 runs (noise 1.0-6.0 mm), GestureCAD filter reduced RMS jitter by 52.43% [95% CI: 52.156% - 52.705%, range: 44.977% - 58.635%]"
+}

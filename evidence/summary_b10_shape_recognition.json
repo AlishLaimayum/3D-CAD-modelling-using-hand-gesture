@@ -1,0 +1,78 @@
+{
+  "benchmark_id": "B10",
+  "name": "Shape Regularization & Heuristic Recognition Accuracy",
+  "dataset_size": 200,
+  "overall_accuracy_pct": 100,
+  "confusion_matrix": {
+    "LINE": {
+      "LINE": 50,
+      "CIRCLE": 0,
+      "RECTANGLE": 0,
+      "TRIANGLE": 0,
+      "NONE": 0
+    },
+    "CIRCLE": {
+      "LINE": 0,
+      "CIRCLE": 50,
+      "RECTANGLE": 0,
+      "TRIANGLE": 0,
+      "NONE": 0
+    },
+    "RECTANGLE": {
+      "LINE": 0,
+      "CIRCLE": 0,
+      "RECTANGLE": 50,
+      "TRIANGLE": 0,
+      "NONE": 0
+    },
+    "TRIANGLE": {
+      "LINE": 0,
+      "CIRCLE": 0,
+      "RECTANGLE": 0,
+      "TRIANGLE": 50,
+      "NONE": 0
+    },
+    "NONE": {
+      "LINE": 0,
+      "CIRCLE": 0,
+      "RECTANGLE": 0,
+      "TRIANGLE": 0,
+      "NONE": 0
+    }
+  },
+  "per_class_metrics": {
+    "LINE": {
+      "true_positives": 50,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "precision_pct": 100,
+      "recall_pct": 100,
+      "f1_score": 100
+    },
+    "CIRCLE": {
+      "true_positives": 50,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "precision_pct": 100,
+      "recall_pct": 100,
+      "f1_score": 100
+    },
+    "RECTANGLE": {
+      "true_positives": 50,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "precision_pct": 100,
+      "recall_pct": 100,
+      "f1_score": 100
+    },
+    "TRIANGLE": {
+      "true_positives": 50,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "precision_pct": 100,
+      "recall_pct": 100,
+      "f1_score": 100
+    }
+  },
+  "verdict": "Overall recognition accuracy of 100.0% across 200 strokes"
+}

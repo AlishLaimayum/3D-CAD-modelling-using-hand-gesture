@@ -1,0 +1,395 @@
+{
+  "summary": {
+    "benchmark_id": "B11",
+    "name": "Snapping Engine Effectiveness & Precision Improvement",
+    "trials_evaluated": 500,
+    "snap_radius": 0.25,
+    "successful_snap_rate_pct": 92,
+    "mean_unsnapped_error_m": 0.1063,
+    "mean_snapped_error_m": 0.0074,
+    "error_reduction_pct": 93.01,
+    "verdict": "Snapping reduced positional targeting error by 93.0% (capture rate 92.0%)"
+  },
+  "sample_trials": [
+    {
+      "target": [
+        4,
+        0,
+        3
+      ],
+      "rawPos": [
+        3.98,
+        0,
+        2.963
+      ],
+      "snappedPos": [
+        4,
+        0,
+        3
+      ],
+      "unsnappedDist": 0.0422,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        5,
+        0,
+        1
+      ],
+      "rawPos": [
+        5.001,
+        0,
+        1.011
+      ],
+      "snappedPos": [
+        5,
+        0,
+        1
+      ],
+      "unsnappedDist": 0.011,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        4,
+        0,
+        1.5
+      ],
+      "rawPos": [
+        4.124,
+        0,
+        1.577
+      ],
+      "snappedPos": [
+        4,
+        0,
+        1.5
+      ],
+      "unsnappedDist": 0.146,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        2,
+        0,
+        3
+      ],
+      "rawPos": [
+        1.935,
+        0,
+        2.887
+      ],
+      "snappedPos": [
+        2,
+        0,
+        3
+      ],
+      "unsnappedDist": 0.1305,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        4,
+        0,
+        1.5
+      ],
+      "rawPos": [
+        3.964,
+        0,
+        1.532
+      ],
+      "snappedPos": [
+        4,
+        0,
+        1.5
+      ],
+      "unsnappedDist": 0.0479,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        0,
+        0,
+        1.5
+      ],
+      "rawPos": [
+        -0.105,
+        0,
+        1.352
+      ],
+      "snappedPos": [
+        -0.105,
+        0,
+        1.352
+      ],
+      "unsnappedDist": 0.1815,
+      "snappedDist": 0.1815
+    },
+    {
+      "target": [
+        0,
+        0,
+        1.5
+      ],
+      "rawPos": [
+        0.011,
+        0,
+        1.491
+      ],
+      "snappedPos": [
+        0.011,
+        0,
+        1.491
+      ],
+      "unsnappedDist": 0.0146,
+      "snappedDist": 0.0146
+    },
+    {
+      "target": [
+        0,
+        0,
+        1.5
+      ],
+      "rawPos": [
+        -0.03,
+        0,
+        1.497
+      ],
+      "snappedPos": [
+        -0.03,
+        0,
+        1.497
+      ],
+      "unsnappedDist": 0.0306,
+      "snappedDist": 0.0306
+    },
+    {
+      "target": [
+        4,
+        0,
+        3
+      ],
+      "rawPos": [
+        4.106,
+        0,
+        2.962
+      ],
+      "snappedPos": [
+        4,
+        0,
+        3
+      ],
+      "unsnappedDist": 0.1128,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        0,
+        0,
+        1.5
+      ],
+      "rawPos": [
+        -0.12,
+        0,
+        1.42
+      ],
+      "snappedPos": [
+        -0.12,
+        0,
+        1.42
+      ],
+      "unsnappedDist": 0.1445,
+      "snappedDist": 0.1445
+    },
+    {
+      "target": [
+        2,
+        0,
+        3
+      ],
+      "rawPos": [
+        2.007,
+        0,
+        2.994
+      ],
+      "snappedPos": [
+        2,
+        0,
+        3
+      ],
+      "unsnappedDist": 0.0091,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        4,
+        0,
+        3
+      ],
+      "rawPos": [
+        4.039,
+        0,
+        3.186
+      ],
+      "snappedPos": [
+        4,
+        0,
+        3
+      ],
+      "unsnappedDist": 0.1899,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "rawPos": [
+        0.168,
+        0,
+        0.027
+      ],
+      "snappedPos": [
+        0,
+        0,
+        0
+      ],
+      "unsnappedDist": 0.1702,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        2,
+        0,
+        0
+      ],
+      "rawPos": [
+        1.994,
+        0,
+        -0.033
+      ],
+      "snappedPos": [
+        2,
+        0,
+        0
+      ],
+      "unsnappedDist": 0.0334,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        8,
+        0,
+        4
+      ],
+      "rawPos": [
+        7.988,
+        0,
+        3.938
+      ],
+      "snappedPos": [
+        8,
+        0,
+        4
+      ],
+      "unsnappedDist": 0.0629,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        5,
+        0,
+        1
+      ],
+      "rawPos": [
+        4.869,
+        0,
+        1.055
+      ],
+      "snappedPos": [
+        5,
+        0,
+        1
+      ],
+      "unsnappedDist": 0.1418,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        4,
+        0,
+        1.5
+      ],
+      "rawPos": [
+        3.96,
+        0,
+        1.648
+      ],
+      "snappedPos": [
+        4,
+        0,
+        1.5
+      ],
+      "unsnappedDist": 0.1536,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        2,
+        0,
+        3
+      ],
+      "rawPos": [
+        1.943,
+        0,
+        2.827
+      ],
+      "snappedPos": [
+        2,
+        0,
+        3
+      ],
+      "unsnappedDist": 0.1817,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        0,
+        0,
+        3
+      ],
+      "rawPos": [
+        0.097,
+        0,
+        3.051
+      ],
+      "snappedPos": [
+        0,
+        0,
+        3
+      ],
+      "unsnappedDist": 0.1092,
+      "snappedDist": 0
+    },
+    {
+      "target": [
+        4,
+        0,
+        0
+      ],
+      "rawPos": [
+        4.011,
+        0,
+        -0.017
+      ],
+      "snappedPos": [
+        4,
+        0,
+        0
+      ],
+      "unsnappedDist": 0.0197,
+      "snappedDist": 0
+    }
+  ]
+}

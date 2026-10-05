@@ -1,0 +1,27 @@
+{
+  "benchmark_id": "B3",
+  "name": "Cursor Jitter & Filter Ablation Study",
+  "sample_count": 1000,
+  "configurations": {
+    "raw_unfiltered": {
+      "rms_jitter_mm": 3.176,
+      "max_jitter_mm": 7.06
+    },
+    "dead_zone_only": {
+      "rms_jitter_mm": 3.176,
+      "max_jitter_mm": 7.079,
+      "rms_reduction_pct": 0
+    },
+    "static_lerp_only": {
+      "rms_jitter_mm": 1.193,
+      "max_jitter_mm": 3.971,
+      "rms_reduction_pct": 62.44
+    },
+    "full_gesturecad": {
+      "rms_jitter_mm": 1.251,
+      "max_jitter_mm": 3.984,
+      "rms_reduction_pct": 60.61
+    }
+  },
+  "verdict": "Full filter achieves 60.6% reduction in RMS jitter (3.176 mm -> 1.251 mm)"
+}

@@ -1,0 +1,44 @@
+{
+  "benchmark_id": "B1",
+  "name": "Software Pipeline Subsystem Computational Latency",
+  "iterations": 5000,
+  "stages": {
+    "ray_plane_intersection": {
+      "mean_ms": 0.0045,
+      "median_ms": 0.0032,
+      "p95_ms": 0.0073,
+      "p99_ms": 0.0219,
+      "std_ms": 0.0171
+    },
+    "snapping_inference": {
+      "mean_ms": 0.0024,
+      "median_ms": 0.0015,
+      "p95_ms": 0.0034,
+      "p99_ms": 0.0068,
+      "std_ms": 0.0107
+    },
+    "shape_regularization": {
+      "mean_ms": 0.0836,
+      "median_ms": 0.0598,
+      "p95_ms": 0.2001,
+      "p99_ms": 0.3769,
+      "std_ms": 0.1035
+    },
+    "brep_extrusion_and_validation": {
+      "mean_ms": 0.1009,
+      "median_ms": 0.0826,
+      "p95_ms": 0.1992,
+      "p99_ms": 0.4573,
+      "std_ms": 0.0803
+    },
+    "face_enumeration_and_so3_frame": {
+      "mean_ms": 0.008,
+      "median_ms": 0.0041,
+      "p95_ms": 0.0185,
+      "p99_ms": 0.0324,
+      "std_ms": 0.0279
+    }
+  },
+  "total_software_cad_budget_mean_ms": 0.1994,
+  "verdict": "All CAD computational stages execute in under 0.65 ms cumulative CPU time per frame, well within the 16.6 ms 60 FPS frame budget"
+}

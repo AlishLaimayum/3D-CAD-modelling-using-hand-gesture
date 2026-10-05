@@ -1,0 +1,99 @@
+{
+  "study_id": "ABLATION_STUDY",
+  "name": "Component-by-Component Ablation on Jitter, State Transitions, and Geometric Snapping",
+  "provenance": "SIMULATED (Parameter Sweeps across 6 Noise Levels x 30 Seeds per Subsystem)",
+  "configurations": [
+    {
+      "config": "Full System",
+      "hysteresis": true,
+      "adaptive_smoothing": true,
+      "dead_zone": true,
+      "scale_norm": true,
+      "snapping": true,
+      "rms_jitter_mm": "1.251 mm (mean 52.4% reduction, range 45.0% - 58.6%)",
+      "state_flips_reduction": "85.6% mean reduction (95% CI: 84.0% - 87.1%, range 67.6% - 99.5%)",
+      "targeting_error_reduction": "79.7% mean reduction (95% CI: 77.3% - 82.2%, range 41.7% - 95.7%)",
+      "scale_invariance_cv_pct": 0.0,
+      "notes": "Full stabilization, state filtering, scale normalization, and geometric snapping enabled."
+    },
+    {
+      "config": "- Hysteresis (Single Threshold)",
+      "hysteresis": false,
+      "adaptive_smoothing": true,
+      "dead_zone": true,
+      "scale_norm": true,
+      "snapping": true,
+      "rms_jitter_mm": "1.251 mm",
+      "state_flips_reduction": "0.0% (naive threshold suffers 67.6% - 99.5% more spurious flips)",
+      "targeting_error_reduction": "79.7%",
+      "scale_invariance_cv_pct": 0.0,
+      "notes": "Removing hysteresis leads to severe limit-cycle chatter at the decision boundary."
+    },
+    {
+      "config": "- Adaptive Smoothing (Dead-Zone Only)",
+      "hysteresis": true,
+      "adaptive_smoothing": false,
+      "dead_zone": true,
+      "scale_norm": true,
+      "snapping": true,
+      "rms_jitter_mm": "3.176 mm (0.0% jitter reduction on active/moving paths)",
+      "state_flips_reduction": "85.6%",
+      "targeting_error_reduction": "79.7%",
+      "scale_invariance_cv_pct": 0.0,
+      "notes": "Without continuous interpolation, active motion suffers high-frequency tremor."
+    },
+    {
+      "config": "- Dead-Zone (Static LERP Only)",
+      "hysteresis": true,
+      "adaptive_smoothing": false,
+      "dead_zone": false,
+      "scale_norm": true,
+      "snapping": true,
+      "rms_jitter_mm": "1.193 mm (stationary), but drag latency increases during rapid strokes",
+      "state_flips_reduction": "85.6%",
+      "targeting_error_reduction": "79.7%",
+      "scale_invariance_cv_pct": 0.0,
+      "notes": "Static LERP dampens noise but introduces lag at high velocities and micro-drift when resting."
+    },
+    {
+      "config": "- Scale Normalization (Raw Pixel Distance)",
+      "hysteresis": true,
+      "adaptive_smoothing": true,
+      "dead_zone": true,
+      "scale_norm": false,
+      "snapping": true,
+      "rms_jitter_mm": "1.251 mm",
+      "state_flips_reduction": "85.6%",
+      "targeting_error_reduction": "79.7%",
+      "scale_invariance_cv_pct": 70.0,
+      "notes": "Pinch distance varies by 70.0% between 30 cm and 100 cm, breaking universal gesture thresholds."
+    },
+    {
+      "config": "- Snapping (Raw Positioning)",
+      "hysteresis": true,
+      "adaptive_smoothing": true,
+      "dead_zone": true,
+      "scale_norm": true,
+      "snapping": false,
+      "rms_jitter_mm": "1.251 mm",
+      "state_flips_reduction": "85.6%",
+      "targeting_error_reduction": "0.0% (positional targeting error increases by 41.7% - 95.7%)",
+      "scale_invariance_cv_pct": 0.0,
+      "notes": "Without magnetic capture, human motor imprecision leaves gaps at vertex intersections."
+    },
+    {
+      "config": "Baseline (None)",
+      "hysteresis": false,
+      "adaptive_smoothing": false,
+      "dead_zone": false,
+      "scale_norm": false,
+      "snapping": false,
+      "rms_jitter_mm": "3.176 mm (raw)",
+      "state_flips_reduction": "0.0% (raw chatter)",
+      "targeting_error_reduction": "0.0% (raw error)",
+      "scale_invariance_cv_pct": 70.0,
+      "notes": "Raw unconditioned pipeline: severe jitter, rapid pinch chatter, distance sensitivity, poor precision."
+    }
+  ],
+  "verdict": "Sensitivity sweeps confirm each component is mathematically necessary across 180 runs per module: Hysteresis prevents chatter (85.6% mean reduction), Adaptive smoothing suppresses jitter (52.4% mean reduction), Scale normalization guarantees distance invariance (0% vs 70% error), and Snapping ensures geometric capture (79.7% mean error reduction, 84.5% capture rate)."
+}

@@ -1,0 +1,326 @@
+{
+  "benchmark_id": "B11_SENSITIVITY_SWEEP",
+  "provenance": "SIMULATED (Stochastic targeting queries against active CAD polygon)",
+  "sweep_parameters": {
+    "noise_radii_tested": [
+      0.1,
+      0.15,
+      0.2,
+      0.25,
+      0.3,
+      0.35
+    ],
+    "seeds_per_level": 30,
+    "total_runs": 180,
+    "queries_per_run": 200,
+    "total_queries": 36000,
+    "snap_distance_threshold": 0.25
+  },
+  "results_by_noise_level": {
+    "noise_0.1": {
+      "noise_radius_limit": 0.1,
+      "capture_rate_pct": {
+        "mean": 90.77,
+        "std": 2.26,
+        "median": 91,
+        "ci95": [
+          89.96,
+          91.58
+        ],
+        "min": 85.5,
+        "max": 94.5
+      },
+      "error_reduction_pct": {
+        "mean": 90.69,
+        "std": 2.52,
+        "median": 90.97,
+        "ci95": [
+          89.79,
+          91.59
+        ],
+        "min": 85.74,
+        "max": 95.74
+      },
+      "mean_unsnapped_error": {
+        "mean": 0.05,
+        "std": 0,
+        "median": 0.05,
+        "ci95": [
+          0.05,
+          0.05
+        ],
+        "min": 0.05,
+        "max": 0.05
+      },
+      "mean_snapped_error": {
+        "mean": 0,
+        "std": 0,
+        "median": 0,
+        "ci95": [
+          0,
+          0.01
+        ],
+        "min": 0,
+        "max": 0.01
+      }
+    },
+    "noise_0.15": {
+      "noise_radius_limit": 0.15,
+      "capture_rate_pct": {
+        "mean": 90.6,
+        "std": 1.92,
+        "median": 90.5,
+        "ci95": [
+          89.91,
+          91.29
+        ],
+        "min": 85,
+        "max": 95
+      },
+      "error_reduction_pct": {
+        "mean": 90.74,
+        "std": 1.76,
+        "median": 90.66,
+        "ci95": [
+          90.11,
+          91.37
+        ],
+        "min": 85.86,
+        "max": 95.1
+      },
+      "mean_unsnapped_error": {
+        "mean": 0.08,
+        "std": 0,
+        "median": 0.08,
+        "ci95": [
+          0.07,
+          0.08
+        ],
+        "min": 0.07,
+        "max": 0.08
+      },
+      "mean_snapped_error": {
+        "mean": 0.01,
+        "std": 0,
+        "median": 0.01,
+        "ci95": [
+          0.01,
+          0.01
+        ],
+        "min": 0,
+        "max": 0.01
+      }
+    },
+    "noise_0.2": {
+      "noise_radius_limit": 0.2,
+      "capture_rate_pct": {
+        "mean": 91.08,
+        "std": 2.28,
+        "median": 91.5,
+        "ci95": [
+          90.27,
+          91.9
+        ],
+        "min": 85.5,
+        "max": 94.5
+      },
+      "error_reduction_pct": {
+        "mean": 91.31,
+        "std": 2.36,
+        "median": 91.08,
+        "ci95": [
+          90.46,
+          92.15
+        ],
+        "min": 87.04,
+        "max": 95.38
+      },
+      "mean_unsnapped_error": {
+        "mean": 0.1,
+        "std": 0,
+        "median": 0.1,
+        "ci95": [
+          0.1,
+          0.1
+        ],
+        "min": 0.09,
+        "max": 0.11
+      },
+      "mean_snapped_error": {
+        "mean": 0.01,
+        "std": 0,
+        "median": 0.01,
+        "ci95": [
+          0.01,
+          0.01
+        ],
+        "min": 0,
+        "max": 0.01
+      }
+    },
+    "noise_0.25": {
+      "noise_radius_limit": 0.25,
+      "capture_rate_pct": {
+        "mean": 90.95,
+        "std": 1.52,
+        "median": 91,
+        "ci95": [
+          90.41,
+          91.49
+        ],
+        "min": 88.5,
+        "max": 94
+      },
+      "error_reduction_pct": {
+        "mean": 91.05,
+        "std": 2.24,
+        "median": 91.49,
+        "ci95": [
+          90.25,
+          91.85
+        ],
+        "min": 88,
+        "max": 95.26
+      },
+      "mean_unsnapped_error": {
+        "mean": 0.13,
+        "std": 0.01,
+        "median": 0.13,
+        "ci95": [
+          0.12,
+          0.13
+        ],
+        "min": 0.11,
+        "max": 0.13
+      },
+      "mean_snapped_error": {
+        "mean": 0.01,
+        "std": 0,
+        "median": 0.01,
+        "ci95": [
+          0.01,
+          0.01
+        ],
+        "min": 0.01,
+        "max": 0.02
+      }
+    },
+    "noise_0.3": {
+      "noise_radius_limit": 0.3,
+      "capture_rate_pct": {
+        "mean": 77.02,
+        "std": 3.12,
+        "median": 76.5,
+        "ci95": [
+          75.9,
+          78.13
+        ],
+        "min": 71.5,
+        "max": 85.5
+      },
+      "error_reduction_pct": {
+        "mean": 65.36,
+        "std": 4.71,
+        "median": 64.32,
+        "ci95": [
+          63.67,
+          67.04
+        ],
+        "min": 56.95,
+        "max": 78.98
+      },
+      "mean_unsnapped_error": {
+        "mean": 0.15,
+        "std": 0.01,
+        "median": 0.15,
+        "ci95": [
+          0.15,
+          0.15
+        ],
+        "min": 0.13,
+        "max": 0.16
+      },
+      "mean_snapped_error": {
+        "mean": 0.05,
+        "std": 0.01,
+        "median": 0.06,
+        "ci95": [
+          0.05,
+          0.06
+        ],
+        "min": 0.03,
+        "max": 0.07
+      }
+    },
+    "noise_0.35": {
+      "noise_radius_limit": 0.35,
+      "capture_rate_pct": {
+        "mean": 66.48,
+        "std": 3.26,
+        "median": 66.5,
+        "ci95": [
+          65.32,
+          67.65
+        ],
+        "min": 60.5,
+        "max": 72
+      },
+      "error_reduction_pct": {
+        "mean": 49.33,
+        "std": 4.05,
+        "median": 50.27,
+        "ci95": [
+          47.88,
+          50.78
+        ],
+        "min": 41.73,
+        "max": 55.62
+      },
+      "mean_unsnapped_error": {
+        "mean": 0.18,
+        "std": 0.01,
+        "median": 0.18,
+        "ci95": [
+          0.17,
+          0.18
+        ],
+        "min": 0.16,
+        "max": 0.19
+      },
+      "mean_snapped_error": {
+        "mean": 0.09,
+        "std": 0.01,
+        "median": 0.09,
+        "ci95": [
+          0.09,
+          0.09
+        ],
+        "min": 0.07,
+        "max": 0.11
+      }
+    }
+  },
+  "aggregate_error_reduction": {
+    "mean": 79.74,
+    "std": 16.84,
+    "median": 89.24,
+    "ci95": [
+      77.28,
+      82.2
+    ],
+    "min": 41.73,
+    "max": 95.74
+  },
+  "aggregate_capture_rate": {
+    "mean": 84.48,
+    "std": 9.84,
+    "median": 89.5,
+    "ci95": [
+      83.05,
+      85.92
+    ],
+    "min": 60.5,
+    "max": 95
+  },
+  "verdict": "Across 180 runs (targeting dispersion 0.10-0.35, snap radius 0.25), snapping captured 84.48% [95% CI: 83.05% - 85.92%, range: 60.5% - 95%], reducing positional targeting error by 79.74% [95% CI: 77.28% - 82.2%, range: 41.73% - 95.74%]."
+}

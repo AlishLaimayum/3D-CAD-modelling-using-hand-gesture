@@ -1,0 +1,101 @@
+[
+  {
+    "pose": "Open_Palm",
+    "physical_pinch_cm": 10.0,
+    "data_points": [
+      {
+        "distance_cm": 30.0,
+        "hand_baseline_px": 253.3,
+        "raw_pinch_px": 266.7,
+        "gesturecad_ratio": 1.0526
+      },
+      {
+        "distance_cm": 50.0,
+        "hand_baseline_px": 152.0,
+        "raw_pinch_px": 160.0,
+        "gesturecad_ratio": 1.0526
+      },
+      {
+        "distance_cm": 80.0,
+        "hand_baseline_px": 95.0,
+        "raw_pinch_px": 100.0,
+        "gesturecad_ratio": 1.0526
+      },
+      {
+        "distance_cm": 100.0,
+        "hand_baseline_px": 76.0,
+        "raw_pinch_px": 80.0,
+        "gesturecad_ratio": 1.0526
+      }
+    ],
+    "mean_gesturecad_ratio": 1.0526,
+    "ratio_cv_pct": 0.0,
+    "raw_pixel_variation_pct": 70.0
+  },
+  {
+    "pose": "Approaching_Pinch",
+    "physical_pinch_cm": 4.5,
+    "data_points": [
+      {
+        "distance_cm": 30.0,
+        "hand_baseline_px": 253.3,
+        "raw_pinch_px": 120.0,
+        "gesturecad_ratio": 0.4737
+      },
+      {
+        "distance_cm": 50.0,
+        "hand_baseline_px": 152.0,
+        "raw_pinch_px": 72.0,
+        "gesturecad_ratio": 0.4737
+      },
+      {
+        "distance_cm": 80.0,
+        "hand_baseline_px": 95.0,
+        "raw_pinch_px": 45.0,
+        "gesturecad_ratio": 0.4737
+      },
+      {
+        "distance_cm": 100.0,
+        "hand_baseline_px": 76.0,
+        "raw_pinch_px": 36.0,
+        "gesturecad_ratio": 0.4737
+      }
+    ],
+    "mean_gesturecad_ratio": 0.4737,
+    "ratio_cv_pct": 0.0,
+    "raw_pixel_variation_pct": 70.0
+  },
+  {
+    "pose": "Contact_Pinch",
+    "physical_pinch_cm": 1.8,
+    "data_points": [
+      {
+        "distance_cm": 30.0,
+        "hand_baseline_px": 253.3,
+        "raw_pinch_px": 48.0,
+        "gesturecad_ratio": 0.1895
+      },
+      {
+        "distance_cm": 50.0,
+        "hand_baseline_px": 152.0,
+        "raw_pinch_px": 28.8,
+        "gesturecad_ratio": 0.1895
+      },
+      {
+        "distance_cm": 80.0,
+        "hand_baseline_px": 95.0,
+        "raw_pinch_px": 18.0,
+        "gesturecad_ratio": 0.1895
+      },
+      {
+        "distance_cm": 100.0,
+        "hand_baseline_px": 76.0,
+        "raw_pinch_px": 14.4,
+        "gesturecad_ratio": 0.1895
+      }
+    ],
+    "mean_gesturecad_ratio": 0.1895,
+    "ratio_cv_pct": 0.0,
+    "raw_pixel_variation_pct": 70.0
+  }
+]
