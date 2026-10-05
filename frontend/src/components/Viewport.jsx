@@ -7,7 +7,8 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { WorkingPlane } from './WorkingPlane';
-import { GeometryRenderer } from './GeometryRenderer';
+import { GeometryRenderer, CompletedObjectsRenderer } from './GeometryRenderer';
+import { FaceHighlightOverlay } from './FaceHighlightOverlay';
 import { PerformanceOverlay } from './PerformanceOverlay';
 import { useGestureInteraction } from '../hooks/useGestureInteraction';
 import { useZElongation } from '../hooks/useZElongation';
@@ -63,7 +64,7 @@ function CameraController({ controlsRef }) {
 function Scene({ interactionRefBridge, controlsRef }) {
     // Z-Elongation HOLD mode — mounts pointer/gesture listeners when active
     const zElongation = useZElongation(controlsRef);
-    const interaction = useGestureInteraction(zElongation);
+    const interaction = useGestureInteraction(zElongation, controlsRef);
     
     // Pass interaction refs out to parent for UI overlays
     if (interactionRefBridge) {
@@ -96,7 +97,17 @@ function Scene({ interactionRefBridge, controlsRef }) {
 
             <CameraController controlsRef={controlsRef} />
 
-            {/* Dynamic Drawing Plane: Grid, Plane Axes, Cursor, and Geometry Move with Active Plane */}
+            {/* Completed CAD Objects — each rendered in world space using its
+                creation-time planePosition + planeRotation. They do NOT follow
+                the active working plane; only the camera/view changes. */}
+            <CompletedObjectsRenderer />
+
+            {/* Face selection highlight overlay — shows clickable face indicators
+                when a 3D solid is selected. Sits in world space (no plane transform). */}
+            <FaceHighlightOverlay />
+
+            {/* Active Working Plane: grid, axes, cursor, live stroke.
+                This group rotates when the user switches XY / YZ / XZ / ISO. */}
             <group position={planePosition} rotation={planeRotation}>
                 <WorkingPlane />
                 <GeometryRenderer 

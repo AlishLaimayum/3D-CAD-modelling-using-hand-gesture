@@ -1,7 +1,7 @@
 /**
  * ActiveDrawingRenderer.jsx - High-Frequency Direct Three.js Live Stroke Renderer
  * 
- * Renders in-progress drawing curves, straight lines, and rectangles using a pre-allocated
+ * Renders in-progress drawing curves, straight lines, rectangles, and circles using a pre-allocated
  * dynamic BufferGeometry with direct vertex buffer updates inside `useFrame()`.
  * 
  * ZERO React component recreation, ZERO array re-allocations during drawing.
@@ -169,6 +169,29 @@ export function ActiveDrawingRenderer({ activeDrawingRef, drawingPointsRef, curs
                 array[4] = currentCursor[1];
                 array[5] = currentCursor[2];
 
+                geometry.setDrawRange(0, 2);
+                posAttr.needsUpdate = true;
+            } else {
+                geometry.setDrawRange(0, 0);
+            }
+        } else if (type === 'CIRCLE') {
+            // Circle preview: up to 65 points (64 segments + closing point)
+            const circlePts = activeDrawing.previewCircle;
+            if (circlePts && circlePts.length >= 2) {
+                const count = Math.min(circlePts.length, MAX_POINTS);
+                for (let i = 0; i < count; i++) {
+                    const c = circlePts[i];
+                    array[i * 3]     = c[0];
+                    array[i * 3 + 1] = c[1];
+                    array[i * 3 + 2] = c[2];
+                }
+                geometry.setDrawRange(0, count);
+                posAttr.needsUpdate = true;
+            } else if (pts[0] && currentCursor) {
+                // Fallback: show radius line before first move
+                const start = pts[0];
+                array[0] = start[0]; array[1] = start[1]; array[2] = start[2];
+                array[3] = currentCursor[0]; array[4] = currentCursor[1]; array[5] = currentCursor[2];
                 geometry.setDrawRange(0, 2);
                 posAttr.needsUpdate = true;
             } else {

@@ -1,22 +1,21 @@
 /**
  * UIOverlay.jsx - 3D CAD Modeling Interface & Precision Controls HUD
- * 
- * Provides:
- * - Granular Zustand selectors to prevent unnecessary rerenders
- * - Drawing Mode Switcher (Freehand Curve, Straight Line, Rectangle)
- * - Precision Snapping Controls (Magnetic Lock, Grid Snap, Angle Snap)
- * - Full Undo / Redo with Command Pattern & Keyboard Shortcuts
- * - Wavefront OBJ, DXF, JSON, and PNG Viewport Exporters
- * - Real-Time Status & Performance Diagnostics HUD Toggle
+ *
+ * Layout:
+ * - Collapsible LEFT SIDEBAR: all tools, snapping, operations, export/import
+ * - TOP LEFT: compact status panel (always visible)
+ * - BOTTOM CENTER: 3D plane selector bar
+ * - FLOATING: XY Z-Offset controller popover
  */
 
-import { useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useCadStore } from '../store/useCadStore';
 import {
     exportToOBJ,
     exportToDXF,
     exportToJSON,
-    exportSnapshotPNG
+    exportSnapshotPNG,
+    exportToSTL
 } from '../utils/exportUtils';
 import {
     Magnet,
@@ -29,552 +28,490 @@ import {
     FileCode,
     Layers,
     Compass,
-    MoveUp,
-    MoveDown,
     Pencil,
     Minus,
     Square,
+    Circle,
     Grid,
     CornerDownRight,
     Activity,
-    ArrowUpDown
+    ArrowUpDown,
+    MousePointer,
+    ChevronRight,
+    ChevronLeft,
+    Maximize2,
+    Move,
+    Download
 } from 'lucide-react';
 
 export function UIOverlay() {
-    // ---------------------------------------------
-    // GRANULAR ZUSTAND SELECTORS (ZERO UNNECESSARY RERENDERS)
-    // ---------------------------------------------
-    const gestureState = useCadStore((state) => state.gestureState);
-    const planeLocked = useCadStore((state) => state.planeLocked);
-    const planePosition = useCadStore((state) => state.planePosition);
-    const planeRotation = useCadStore((state) => state.planeRotation);
-    const activePreset = useCadStore((state) => state.activePreset);
-    const cadObjects = useCadStore((state) => state.cadObjects);
-    const drawingMode = useCadStore((state) => state.drawingMode);
+    // ---------------------------------------------------
+    // GRANULAR ZUSTAND SELECTORS
+    // ---------------------------------------------------
+    const gestureState     = useCadStore((s) => s.gestureState);
+    const planeLocked      = useCadStore((s) => s.planeLocked);
+    const planePosition    = useCadStore((s) => s.planePosition);
+    const planeRotation    = useCadStore((s) => s.planeRotation);
+    const activePreset     = useCadStore((s) => s.activePreset);
+    const cadObjects       = useCadStore((s) => s.cadObjects);
+    const drawingMode      = useCadStore((s) => s.drawingMode);
+    const selectedObjectId = useCadStore((s) => s.selectedObjectId);
 
-    // Snapping configuration
-    const magneticLockEnabled = useCadStore((state) => state.magneticLockEnabled);
-    const gridSnapEnabled = useCadStore((state) => state.gridSnapEnabled);
-    const angleSnapEnabled = useCadStore((state) => state.angleSnapEnabled);
-    const isSnapped = useCadStore((state) => state.isSnapped);
-    const snappedPoint = useCadStore((state) => state.snappedPoint);
+    const magneticLockEnabled = useCadStore((s) => s.magneticLockEnabled);
+    const gridSnapEnabled     = useCadStore((s) => s.gridSnapEnabled);
+    const angleSnapEnabled    = useCadStore((s) => s.angleSnapEnabled);
+    const isSnapped           = useCadStore((s) => s.isSnapped);
+    const snappedPoint        = useCadStore((s) => s.snappedPoint);
 
-    // Undo / Redo
-    const canUndo = useCadStore((state) => state.canUndo);
-    const canRedo = useCadStore((state) => state.canRedo);
-    const diagnosticsEnabled = useCadStore((state) => state.diagnosticsEnabled);
+    const canUndo           = useCadStore((s) => s.canUndo);
+    const canRedo           = useCadStore((s) => s.canRedo);
+    const diagnosticsEnabled = useCadStore((s) => s.diagnosticsEnabled);
+    const zHoldModeEnabled   = useCadStore((s) => s.zHoldModeEnabled);
+    const selectedFace       = useCadStore((s) => s.selectedFace);
+    const clearSelectedFace  = useCadStore((s) => s.clearSelectedFace);
 
-    // Store Actions
-    const setDrawingMode = useCadStore((state) => state.setDrawingMode);
-    const toggleMagneticLock = useCadStore((state) => state.toggleMagneticLock);
-    const toggleGridSnap = useCadStore((state) => state.toggleGridSnap);
-    const toggleAngleSnap = useCadStore((state) => state.toggleAngleSnap);
-    const undo = useCadStore((state) => state.undo);
-    const redo = useCadStore((state) => state.redo);
-    const clearCADObjects = useCadStore((state) => state.clearCADObjects);
-    const setCADObjects = useCadStore((state) => state.setCADObjects);
-    const setPresetPlane = useCadStore((state) => state.setPresetPlane);
-    const setPlaneOffset = useCadStore((state) => state.setPlaneOffset);
-    const toggleDiagnostics = useCadStore((state) => state.toggleDiagnostics);
+    // Actions
+    const setDrawingMode          = useCadStore((s) => s.setDrawingMode);
+    const deselectObject          = useCadStore((s) => s.deselectObject);
+    const deleteSelectedObject    = useCadStore((s) => s.deleteSelectedObject);
+    const extrudeObject           = useCadStore((s) => s.extrudeObject);
+    const toggleMagneticLock      = useCadStore((s) => s.toggleMagneticLock);
+    const toggleGridSnap          = useCadStore((s) => s.toggleGridSnap);
+    const toggleAngleSnap         = useCadStore((s) => s.toggleAngleSnap);
+    const undo                    = useCadStore((s) => s.undo);
+    const redo                    = useCadStore((s) => s.redo);
+    const clearCADObjects         = useCadStore((s) => s.clearCADObjects);
+    const setCADObjects           = useCadStore((s) => s.setCADObjects);
+    const setPresetPlane          = useCadStore((s) => s.setPresetPlane);
+    const setPlaneOffset          = useCadStore((s) => s.setPlaneOffset);
+    const startDrawingXYWithZOffset = useCadStore((s) => s.startDrawingXYWithZOffset);
+    const toggleDiagnostics       = useCadStore((s) => s.toggleDiagnostics);
+    const toggleZHoldMode         = useCadStore((s) => s.toggleZHoldMode);
 
-    // Z-Axis Elongation HOLD mode
-    const zHoldModeEnabled = useCadStore((state) => state.zHoldModeEnabled);
-    const toggleZHoldMode  = useCadStore((state) => state.toggleZHoldMode);
-
+    // Local state
+    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [showZOffsetPopover, setShowZOffsetPopover] = useState(false);
     const fileInputRef = useRef(null);
 
-    // ---------------------------------------------
+    // ---------------------------------------------------
     // GLOBAL KEYBOARD SHORTCUTS
-    // ---------------------------------------------
+    // ---------------------------------------------------
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-            // Undo: Ctrl+Z or Cmd+Z
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-                e.preventDefault();
-                undo();
-            }
-            // Redo: Ctrl+Y or Ctrl+Shift+Z
-            else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
-                e.preventDefault();
-                redo();
-            }
-            // Mode shortcuts: 1=Freehand, 2=Line, 3=Rectangle
-            else if (e.key === '1') {
-                setDrawingMode('FREEHAND');
-            } else if (e.key === '2') {
-                setDrawingMode('LINE');
-            } else if (e.key === '3') {
-                setDrawingMode('RECTANGLE');
-            }
+                e.preventDefault(); undo();
+            } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+                e.preventDefault(); redo();
+            } else if (e.key.toLowerCase() === 's' && !e.ctrlKey) {
+                setDrawingMode('SELECT');
+            } else if (e.key === '1') { setDrawingMode('FREEHAND'); }
+              else if (e.key === '2') { setDrawingMode('LINE'); }
+              else if (e.key === '3') { setDrawingMode('RECTANGLE'); }
+              else if (e.key === '4') { setDrawingMode('CIRCLE'); }
+              else if (e.key === 'Escape') { deselectObject(); clearSelectedFace(); }
+              else if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelectedObject(); }
         };
-
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo, setDrawingMode]);
+    }, [undo, redo, setDrawingMode, deselectObject, deleteSelectedObject, clearSelectedFace]);
 
-    // Handle Project JSON File Import
+    // Handle JSON import
     const handleImportJSON = (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = (ev) => {
             try {
-                const data = JSON.parse(event.target.result);
+                const data = JSON.parse(ev.target.result);
                 if (data.cadObjects && Array.isArray(data.cadObjects)) {
                     setCADObjects(data.cadObjects);
-                    alert(`Loaded CAD project with ${data.cadObjects.length} object(s).`);
+                    alert(`Loaded ${data.cadObjects.length} object(s).`);
                 } else if (data.lines && Array.isArray(data.lines)) {
-                    // Backwards-compatible line import
                     setCADObjects(data.lines);
-                    alert(`Loaded legacy project with ${data.lines.length} segment(s).`);
+                    alert(`Loaded ${data.lines.length} segment(s).`);
                 } else {
-                    alert('Invalid JSON structure: missing cadObjects array.');
+                    alert('Invalid JSON: missing cadObjects array.');
                 }
-            } catch (_err) {
-                console.error('JSON parse error:', _err);
-                alert('Error parsing JSON file.');
-            }
+            } catch (_) { alert('Error parsing JSON file.'); }
         };
         reader.readAsText(file);
     };
 
-    // Calculate total stored points
     let totalPoints = 0;
     cadObjects.forEach((obj) => {
         if (obj.points) totalPoints += obj.points.length;
         else if (obj.start && obj.end) totalPoints += 2;
     });
 
+    const SIDEBAR_W = sidebarOpen ? 230 : 54;
+
     return (
         <>
-            {/* ---------------------------------------------
-                STATUS PANEL (TOP LEFT)
-            --------------------------------------------- */}
+            {/* ================================================
+                COLLAPSIBLE LEFT SIDEBAR
+            ================================================ */}
             <div style={{
                 position: 'absolute',
-                top: 20,
-                left: 20,
+                top: 0,
+                left: 0,
+                height: '100%',
+                width: SIDEBAR_W,
+                background: 'rgba(10, 13, 22, 0.94)',
+                backdropFilter: 'blur(20px)',
+                borderRight: '1px solid rgba(0, 240, 255, 0.18)',
+                display: 'flex',
+                flexDirection: 'column',
+                zIndex: 30,
+                transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
+                overflow: 'hidden',
+                pointerEvents: 'auto',
+                boxShadow: '4px 0 30px rgba(0,0,0,0.5)'
+            }}>
+                {/* ---- SIDEBAR HEADER ---- */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: sidebarOpen ? 'space-between' : 'center',
+                    padding: sidebarOpen ? '14px 14px 10px' : '14px 0 10px',
+                    borderBottom: '1px solid rgba(0,240,255,0.12)',
+                    flexShrink: 0
+                }}>
+                    {sidebarOpen && (
+                        <span style={{
+                            color: '#00f0ff',
+                            fontFamily: 'monospace',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            letterSpacing: '1.5px',
+                            whiteSpace: 'nowrap'
+                        }}>
+                            CAD OPERATIONS
+                        </span>
+                    )}
+                    <button
+                        onClick={() => setSidebarOpen(o => !o)}
+                        title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+                        style={{
+                            background: 'rgba(0,240,255,0.08)',
+                            border: '1px solid rgba(0,240,255,0.25)',
+                            borderRadius: '8px',
+                            color: '#00f0ff',
+                            cursor: 'pointer',
+                            padding: '5px 7px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0
+                        }}
+                    >
+                        {sidebarOpen ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+                    </button>
+                </div>
+
+                {/* ---- SCROLLABLE CONTENT ---- */}
+                <div style={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    overflowX: 'hidden',
+                    padding: sidebarOpen ? '8px 10px' : '8px 5px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                }}>
+
+                    {/* === SECTION: DRAW TOOLS === */}
+                    <SidebarSection label="Draw Tools" open={sidebarOpen}>
+                        <SidebarBtn
+                            icon={<MousePointer size={15} />}
+                            label="Select"
+                            shortcut="S"
+                            active={drawingMode === 'SELECT'}
+                            open={sidebarOpen}
+                            onClick={() => setDrawingMode('SELECT')}
+                            activeColor="#00f0ff"
+                        />
+                        <SidebarBtn
+                            icon={<Pencil size={15} />}
+                            label="Freehand"
+                            shortcut="1"
+                            active={drawingMode === 'FREEHAND'}
+                            open={sidebarOpen}
+                            onClick={() => setDrawingMode('FREEHAND')}
+                        />
+                        <SidebarBtn
+                            icon={<Minus size={15} />}
+                            label="Line"
+                            shortcut="2"
+                            active={drawingMode === 'LINE'}
+                            open={sidebarOpen}
+                            onClick={() => setDrawingMode('LINE')}
+                        />
+                        <SidebarBtn
+                            icon={<Square size={15} />}
+                            label="Rectangle"
+                            shortcut="3"
+                            active={drawingMode === 'RECTANGLE'}
+                            open={sidebarOpen}
+                            onClick={() => setDrawingMode('RECTANGLE')}
+                        />
+                        <SidebarBtn
+                            icon={<Circle size={15} />}
+                            label="Circle"
+                            shortcut="4"
+                            active={drawingMode === 'CIRCLE'}
+                            open={sidebarOpen}
+                            onClick={() => setDrawingMode('CIRCLE')}
+                        />
+                    </SidebarSection>
+
+                    <SidebarDivider />
+
+                    {/* === SECTION: 3D OPERATIONS === */}
+                    <SidebarSection label="3D Operations" open={sidebarOpen}>
+                        <SidebarBtn
+                            icon={<Box size={15} />}
+                            label="Extrude Solid"
+                            active={false}
+                            open={sidebarOpen}
+                            onClick={() => extrudeObject(selectedObjectId, 1.5)}
+                            disabled={!selectedObjectId}
+                            activeColor="#00ff66"
+                            accentColor="#00ff66"
+                            title="Extrude selected sketch into 3D solid"
+                        />
+                        <SidebarBtn
+                            icon={<ArrowUpDown size={15} />}
+                            label="Z-Hold Mode"
+                            active={zHoldModeEnabled}
+                            open={sidebarOpen}
+                            onClick={toggleZHoldMode}
+                            activeColor="#ffaa00"
+                            title="Drag object to elongate along Z"
+                        />
+                        <SidebarBtn
+                            icon={<Trash2 size={15} />}
+                            label="Delete"
+                            shortcut="Del"
+                            active={false}
+                            open={sidebarOpen}
+                            onClick={deleteSelectedObject}
+                            disabled={!selectedObjectId}
+                            accentColor="#ff4455"
+                            title="Delete selected object"
+                        />
+                    </SidebarSection>
+
+                    <SidebarDivider />
+
+                    {/* === SECTION: SNAPPING === */}
+                    <SidebarSection label="Snapping" open={sidebarOpen}>
+                        <SidebarBtn
+                            icon={<Magnet size={15} />}
+                            label="Magnetic Snap"
+                            active={magneticLockEnabled}
+                            open={sidebarOpen}
+                            onClick={toggleMagneticLock}
+                            activeColor="#00c6ff"
+                        />
+                        <SidebarBtn
+                            icon={<Grid size={15} />}
+                            label="Grid Snap"
+                            active={gridSnapEnabled}
+                            open={sidebarOpen}
+                            onClick={toggleGridSnap}
+                            activeColor="#00ff66"
+                        />
+                        <SidebarBtn
+                            icon={<CornerDownRight size={15} />}
+                            label="45° Angle Snap"
+                            active={angleSnapEnabled}
+                            open={sidebarOpen}
+                            onClick={toggleAngleSnap}
+                            activeColor="#ffea00"
+                        />
+                    </SidebarSection>
+
+                    <SidebarDivider />
+
+                    {/* === SECTION: HISTORY === */}
+                    <SidebarSection label="History" open={sidebarOpen}>
+                        <SidebarBtn
+                            icon={<RotateCcw size={15} />}
+                            label="Undo"
+                            shortcut="Ctrl+Z"
+                            active={false}
+                            open={sidebarOpen}
+                            onClick={undo}
+                            disabled={!canUndo}
+                        />
+                        <SidebarBtn
+                            icon={<RotateCw size={15} />}
+                            label="Redo"
+                            shortcut="Ctrl+Y"
+                            active={false}
+                            open={sidebarOpen}
+                            onClick={redo}
+                            disabled={!canRedo}
+                        />
+                        <SidebarBtn
+                            icon={<Trash2 size={15} />}
+                            label="Clear All"
+                            active={false}
+                            open={sidebarOpen}
+                            onClick={clearCADObjects}
+                            disabled={cadObjects.length === 0}
+                            accentColor="#ff4455"
+                            title="Remove all CAD objects"
+                        />
+                    </SidebarSection>
+
+                    <SidebarDivider />
+
+                    {/* === SECTION: EXPORT === */}
+                    <SidebarSection label="Export / Import" open={sidebarOpen}>
+                        <SidebarBtn
+                            icon={<Box size={15} />}
+                            label="Export OBJ"
+                            active={false}
+                            open={sidebarOpen}
+                            onClick={() => exportToOBJ(cadObjects, planeRotation)}
+                            accentColor="#00ffff"
+                        />
+                        <SidebarBtn
+                            icon={<Layers size={15} />}
+                            label="Export DXF"
+                            active={false}
+                            open={sidebarOpen}
+                            onClick={() => exportToDXF(cadObjects)}
+                            accentColor="#00ff66"
+                        />
+                        <SidebarBtn
+                            icon={<FileCode size={15} />}
+                            label="Export JSON"
+                            active={false}
+                            open={sidebarOpen}
+                            onClick={() => exportToJSON(cadObjects, planeRotation)}
+                            accentColor="#ffea00"
+                        />
+                        <SidebarBtn
+                            icon={<Camera size={15} />}
+                            label="Screenshot PNG"
+                            active={false}
+                            open={sidebarOpen}
+                            onClick={() => exportSnapshotPNG()}
+                            accentColor="#ff44aa"
+                        />
+                        <SidebarBtn
+                            icon={<Upload size={15} />}
+                            label="Import JSON"
+                            active={false}
+                            open={sidebarOpen}
+                            onClick={() => fileInputRef.current?.click()}
+                        />
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleImportJSON}
+                            accept=".json"
+                            style={{ display: 'none' }}
+                        />
+                    </SidebarSection>
+
+                    <SidebarDivider />
+
+                    {/* === SECTION: DIAGNOSTICS === */}
+                    <SidebarSection label="Diagnostics" open={sidebarOpen}>
+                        <SidebarBtn
+                            icon={<Activity size={15} />}
+                            label="Perf HUD"
+                            active={diagnosticsEnabled}
+                            open={sidebarOpen}
+                            onClick={toggleDiagnostics}
+                            activeColor="#00f0ff"
+                        />
+                    </SidebarSection>
+                </div>
+
+                {/* ---- SIDEBAR FOOTER: object count ---- */}
+                {sidebarOpen && (
+                    <div style={{
+                        padding: '10px 14px',
+                        borderTop: '1px solid rgba(255,255,255,0.08)',
+                        fontSize: '11px',
+                        color: '#888',
+                        fontFamily: 'monospace',
+                        flexShrink: 0
+                    }}>
+                        <span style={{ color: '#00f0ff', fontWeight: '700' }}>{cadObjects.length}</span> objects
+                        &nbsp;·&nbsp;
+                        <span style={{ color: '#555' }}>{totalPoints} pts</span>
+                        {selectedObjectId && (
+                            <div style={{ marginTop: '4px', color: '#ffaa00', fontSize: '10px' }}>
+                                ● Object selected
+                            </div>
+                        )}
+                        {selectedFace && (
+                            <div style={{ marginTop: '4px', color: '#00ffcc', fontSize: '10px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                ▣ Face: <strong>{selectedFace.faceLabel}</strong>
+                                <button onClick={clearSelectedFace} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 10, padding: 0, marginLeft: 4 }}>✕</button>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* ================================================
+                STATUS PANEL (TOP LEFT, offset by sidebar)
+            ================================================ */}
+            <div style={{
+                position: 'absolute',
+                top: 16,
+                left: SIDEBAR_W + 16,
                 color: 'white',
-                background: 'rgba(15, 18, 28, 0.88)',
+                background: 'rgba(10, 13, 22, 0.88)',
                 backdropFilter: 'blur(16px)',
-                border: '1px solid rgba(0, 240, 255, 0.25)',
-                padding: '18px 20px',
-                borderRadius: '14px',
+                border: '1px solid rgba(0, 240, 255, 0.2)',
+                padding: '12px 16px',
+                borderRadius: '12px',
                 fontFamily: 'Consolas, Monaco, "Courier New", monospace',
                 pointerEvents: 'auto',
                 zIndex: 10,
-                minWidth: '260px',
-                boxShadow: '0 10px 35px rgba(0,0,0,0.5)'
+                fontSize: '11px',
+                lineHeight: '1.7',
+                boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+                transition: 'left 0.25s cubic-bezier(0.4,0,0.2,1)'
             }}>
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    borderBottom: '1px solid rgba(255,255,255,0.15)',
-                    paddingBottom: '8px',
-                    marginBottom: '12px'
-                }}>
-                    <h3 style={{
-                        margin: 0,
-                        color: '#00f0ff',
-                        fontSize: '14px',
-                        letterSpacing: '1px',
-                        fontWeight: '700'
-                    }}>
-                        3D CAD STATUS
-                    </h3>
-                    <button
-                        onClick={toggleDiagnostics}
-                        title="Toggle Performance Diagnostics HUD [D]"
-                        style={{
-                            background: diagnosticsEnabled ? 'rgba(0,240,255,0.2)' : 'transparent',
-                            border: '1px solid rgba(0,240,255,0.4)',
-                            color: '#00f0ff',
-                            borderRadius: '6px',
-                            padding: '3px 6px',
-                            fontSize: '10px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                        }}
-                    >
-                        <Activity size={12} />
-                        <span>HUD</span>
-                    </button>
+                <div style={{ color: '#00f0ff', fontWeight: '700', letterSpacing: '1px', marginBottom: '6px', fontSize: '11px' }}>
+                    3D CAD STATUS
                 </div>
-
-                <div style={{ margin: '6px 0', fontSize: '12px' }}>
-                    <strong>Active Plane:</strong> <span style={{ color: '#00ffff', fontWeight: 'bold' }}>{activePreset} PLANE</span>
-                </div>
-
-                <div style={{ margin: '6px 0', fontSize: '12px' }}>
-                    <strong>Plane Elevation (Y):</strong> <span style={{ color: '#ffea00', fontWeight: 'bold' }}>{planePosition[1].toFixed(2)}</span>
-                </div>
-
-                <div style={{ margin: '6px 0', fontSize: '12px' }}>
-                    <strong>Gesture:</strong> <span style={{
-                        color: gestureState === 'DRAWING' || gestureState === 'PINCH' ? '#ff0055' : (gestureState === 'ROTATING' ? '#ffea00' : '#00ffff'),
-                        fontWeight: 'bold'
-                    }}>
-                        {gestureState}
-                    </span>
-                </div>
-
-                <div style={{ margin: '6px 0', fontSize: '12px' }}>
-                    <strong>Plane Lock:</strong> <span style={{ color: planeLocked ? '#ff4455' : '#00ff66', fontWeight: 'bold' }}>
-                        {planeLocked ? 'LOCKED (Draw Active)' : 'UNLOCKED (Rotate Active)'}
-                    </span>
-                </div>
-
-                <div style={{ margin: '6px 0', fontSize: '12px' }}>
-                    <strong>Tool Mode:</strong> <span style={{ color: '#ffea00', fontWeight: 'bold' }}>{drawingMode}</span>
-                </div>
-
-                <div style={{ margin: '6px 0', fontSize: '12px' }}>
-                    <strong>Precision Snap:</strong> <span style={{ color: isSnapped ? '#00ff66' : '#888888', fontWeight: 'bold' }}>
-                        {isSnapped ? 'SNAP LOCKED 🧲' : (magneticLockEnabled ? 'ACTIVE' : 'DISABLED')}
-                    </span>
-                </div>
-
-                <div style={{ margin: '6px 0', fontSize: '12px' }}>
-                    <strong>CAD Objects:</strong> <span style={{ color: '#00ffff', fontWeight: 'bold' }}>{cadObjects.length}</span>
-                    <span style={{ color: '#888', fontSize: '11px', marginLeft: '6px' }}>({totalPoints} pts)</span>
-                </div>
-
+                <div><span style={{ color: '#666' }}>Plane:</span> <span style={{ color: '#00ffff', fontWeight: '700' }}>
+                    {activePreset}{activePreset === 'XY' && planePosition[2] !== 0 ? ` Z=${planePosition[2] > 0 ? '+' : ''}${planePosition[2]}` : ''}
+                </span></div>
+                <div><span style={{ color: '#666' }}>Tool:</span> <span style={{ color: '#ffea00', fontWeight: '700' }}>{drawingMode}</span></div>
+                <div><span style={{ color: '#666' }}>Lock:</span> <span style={{ color: planeLocked ? '#ff4455' : '#00ff66', fontWeight: '700' }}>{planeLocked ? 'LOCKED' : 'FREE'}</span></div>
+                <div><span style={{ color: '#666' }}>Snap:</span> <span style={{ color: isSnapped ? '#00ff66' : '#555', fontWeight: '700' }}>{isSnapped ? '🧲 SNAPPED' : magneticLockEnabled ? 'Active' : 'Off'}</span></div>
                 {zHoldModeEnabled && (
-                    <div style={{
-                        marginTop: '8px',
-                        padding: '6px 10px',
-                        background: 'rgba(255,170,0,0.12)',
-                        border: '1px solid rgba(255,170,0,0.4)',
-                        borderRadius: '8px',
-                        fontSize: '11px',
-                        color: '#ffaa00',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                    }}>
-                        <ArrowUpDown size={12} />
-                        <span><strong>Z-HOLD ACTIVE</strong> — Drag object to elongate along Z axis</span>
+                    <div style={{ marginTop: '4px', padding: '4px 8px', background: 'rgba(255,170,0,0.12)', border: '1px solid rgba(255,170,0,0.3)', borderRadius: '6px', color: '#ffaa00', fontSize: '10px' }}>
+                        ↕ Z-HOLD ACTIVE
                     </div>
                 )}
-
                 {isSnapped && snappedPoint && (
-                    <div style={{ marginTop: '8px', padding: '6px 8px', background: 'rgba(0,255,102,0.1)', borderRadius: '6px', fontSize: '11px', color: '#00ff66' }}>
-                        📍 Snapped: [{snappedPoint[0].toFixed(2)}, {snappedPoint[1].toFixed(2)}, {snappedPoint[2].toFixed(2)}]
+                    <div style={{ marginTop: '4px', color: '#00ff66', fontSize: '10px' }}>
+                        [{snappedPoint[0].toFixed(2)}, {snappedPoint[1].toFixed(2)}, {snappedPoint[2].toFixed(2)}]
                     </div>
                 )}
             </div>
 
-            {/* ---------------------------------------------
-                DRAWING TOOL SELECTOR & SNAPPING BAR (TOP CENTER)
-            --------------------------------------------- */}
-            <div style={{
-                position: 'absolute',
-                top: 20,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: 'rgba(15, 18, 28, 0.9)',
-                backdropFilter: 'blur(16px)',
-                border: '1px solid rgba(0, 240, 255, 0.3)',
-                borderRadius: '30px',
-                padding: '8px 18px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                zIndex: 20,
-                boxShadow: '0 10px 40px rgba(0,0,0,0.6)'
-            }}>
-                {/* Freehand Tool */}
-                <button
-                    onClick={() => setDrawingMode('FREEHAND')}
-                    title="Freehand Curve Tool [1] - Preserves all drawn coordinates"
-                    style={toolBtnStyle(drawingMode === 'FREEHAND')}
-                >
-                    <Pencil size={15} />
-                    <span>Freehand</span>
-                </button>
-
-                {/* Line Tool */}
-                <button
-                    onClick={() => setDrawingMode('LINE')}
-                    title="Straight Line Tool [2]"
-                    style={toolBtnStyle(drawingMode === 'LINE')}
-                >
-                    <Minus size={15} />
-                    <span>Line</span>
-                </button>
-
-                {/* Rectangle Tool */}
-                <button
-                    onClick={() => setDrawingMode('RECTANGLE')}
-                    title="Rectangle Tool [3]"
-                    style={toolBtnStyle(drawingMode === 'RECTANGLE')}
-                >
-                    <Square size={15} />
-                    <span>Rectangle</span>
-                </button>
-
-                {/* Z-Axis Elongation HOLD Mode */}
-                <button
-                    id="btn-z-hold"
-                    onClick={toggleZHoldMode}
-                    title="Toggle Z-Elongation HOLD mode: pinch/click an object and drag along Z to scale it"
-                    style={{
-                        ...toolBtnStyle(zHoldModeEnabled),
-                        border: zHoldModeEnabled ? '1px solid #ffaa00' : '1px solid rgba(255,255,255,0.15)',
-                        background: zHoldModeEnabled
-                            ? 'linear-gradient(135deg, #ff8c00, #ffaa00)'
-                            : '#1a1f2c',
-                        color: zHoldModeEnabled ? '#000' : '#ccc',
-                        boxShadow: zHoldModeEnabled ? '0 0 14px rgba(255,170,0,0.55)' : 'none',
-                    }}
-                >
-                    <ArrowUpDown size={15} />
-                    <span>HOLD</span>
-                </button>
-
-                <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
-
-                {/* Magnetic Snap Toggle */}
-                <button
-                    onClick={toggleMagneticLock}
-                    title="Toggle Magnetic Snap Lock (Vertex/Midpoint)"
-                    style={{
-                        ...btnStyle,
-                        background: magneticLockEnabled ? 'rgba(0, 198, 255, 0.25)' : 'transparent',
-                        borderColor: magneticLockEnabled ? '#00c6ff' : 'rgba(255,255,255,0.15)',
-                        color: magneticLockEnabled ? '#00f0ff' : '#888'
-                    }}
-                >
-                    <Magnet size={15} />
-                    <span>Magnet</span>
-                </button>
-
-                {/* Grid Snap Toggle */}
-                <button
-                    onClick={toggleGridSnap}
-                    title="Toggle Grid Coordinate Snap"
-                    style={{
-                        ...btnStyle,
-                        background: gridSnapEnabled ? 'rgba(0, 255, 102, 0.2)' : 'transparent',
-                        borderColor: gridSnapEnabled ? '#00ff66' : 'rgba(255,255,255,0.15)',
-                        color: gridSnapEnabled ? '#00ff66' : '#888'
-                    }}
-                >
-                    <Grid size={15} />
-                    <span>Grid</span>
-                </button>
-
-                {/* Angle Snap Toggle */}
-                <button
-                    onClick={toggleAngleSnap}
-                    title="Toggle 45°/90° Angle Snap"
-                    style={{
-                        ...btnStyle,
-                        background: angleSnapEnabled ? 'rgba(255, 234, 0, 0.2)' : 'transparent',
-                        borderColor: angleSnapEnabled ? '#ffea00' : 'rgba(255,255,255,0.15)',
-                        color: angleSnapEnabled ? '#ffea00' : '#888'
-                    }}
-                >
-                    <CornerDownRight size={15} />
-                    <span>45° Snap</span>
-                </button>
-
-                <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
-
-                {/* Undo / Redo */}
-                <button
-                    onClick={undo}
-                    disabled={!canUndo}
-                    title="Undo [Ctrl+Z]"
-                    style={{ ...btnStyle, opacity: canUndo ? 1 : 0.35, padding: '7px 10px' }}
-                >
-                    <RotateCcw size={15} />
-                </button>
-
-                <button
-                    onClick={redo}
-                    disabled={!canRedo}
-                    title="Redo [Ctrl+Y]"
-                    style={{ ...btnStyle, opacity: canRedo ? 1 : 0.35, padding: '7px 10px' }}
-                >
-                    <RotateCw size={15} />
-                </button>
-
-                {/* Clear All */}
-                <button
-                    onClick={clearCADObjects}
-                    disabled={cadObjects.length === 0}
-                    title="Clear all CAD geometry"
-                    style={{
-                        ...btnStyle,
-                        background: 'rgba(255,68,85,0.15)',
-                        borderColor: 'rgba(255,68,85,0.4)',
-                        color: '#ff4455',
-                        opacity: cadObjects.length === 0 ? 0.35 : 1,
-                        padding: '7px 10px'
-                    }}
-                >
-                    <Trash2 size={15} />
-                </button>
-            </div>
-
-            {/* ---------------------------------------------
-                EXPORT / IMPORT TOOLBAR (TOP RIGHT INSTRUCTION AREA)
-            --------------------------------------------- */}
-            <div style={{
-                position: 'absolute',
-                top: 20,
-                right: 20,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-                zIndex: 10
-            }}>
-                {/* Exporter Buttons */}
-                <div style={{
-                    background: 'rgba(15, 18, 28, 0.88)',
-                    backdropFilter: 'blur(16px)',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    borderRadius: '14px',
-                    padding: '10px 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
-                }}>
-                    <button
-                        onClick={() => exportToOBJ(cadObjects, planeRotation)}
-                        title="Export Wavefront 3D OBJ file"
-                        style={btnStyle}
-                    >
-                        <Box size={15} color="#00ffff" />
-                        <span>OBJ</span>
-                    </button>
-
-                    <button
-                        onClick={() => exportToDXF(cadObjects)}
-                        title="Export AutoCAD DXF file"
-                        style={btnStyle}
-                    >
-                        <Layers size={15} color="#00ff66" />
-                        <span>DXF</span>
-                    </button>
-
-                    <button
-                        onClick={() => exportToJSON(cadObjects, planeRotation)}
-                        title="Export CAD Project JSON"
-                        style={btnStyle}
-                    >
-                        <FileCode size={15} color="#ffea00" />
-                        <span>JSON</span>
-                    </button>
-
-                    <button
-                        onClick={() => exportSnapshotPNG()}
-                        title="Download 3D Viewport PNG Snapshot"
-                        style={btnStyle}
-                    >
-                        <Camera size={15} color="#ff44aa" />
-                        <span>PNG</span>
-                    </button>
-
-                    <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.2)' }} />
-
-                    <button
-                        onClick={() => fileInputRef.current?.click()}
-                        title="Load CAD Project JSON"
-                        style={btnStyle}
-                    >
-                        <Upload size={15} />
-                        <span>Load</span>
-                    </button>
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleImportJSON}
-                        accept=".json"
-                        style={{ display: 'none' }}
-                    />
-                </div>
-
-                {/* Gesture & Quick Help Guide */}
-                <div style={{
-                    color: 'white',
-                    background: 'rgba(15, 18, 28, 0.88)',
-                    backdropFilter: 'blur(16px)',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    padding: '16px 18px',
-                    borderRadius: '14px',
-                    fontFamily: 'sans-serif',
-                    width: '280px',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
-                }}>
-                    <h3 style={{
-                        marginTop: 0,
-                        marginBottom: '10px',
-                        borderBottom: '1px solid rgba(255,255,255,0.15)',
-                        paddingBottom: '6px',
-                        fontFamily: 'monospace',
-                        color: '#00f0ff',
-                        fontSize: '13px',
-                        letterSpacing: '1px'
-                    }}>
-                        GESTURE CAD GUIDE
-                    </h3>
-
-                    {/* Mouse Draw */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '15px', width: '26px' }}>🖱️</span>
-                        <div>
-                            <strong style={{ display: 'block', color: '#00ffff', fontSize: '11px' }}>MOUSE DRAW</strong>
-                            <span style={{ fontSize: '10px', color: '#aaa' }}>Click & Drag to draw on 3D plane.</span>
-                        </div>
-                    </div>
-
-                    {/* Open Palm */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '15px', width: '26px' }}>✋</span>
-                        <div>
-                            <strong style={{ display: 'block', color: '#00ffff', fontSize: '11px' }}>OPEN PALM</strong>
-                            <span style={{ fontSize: '10px', color: '#aaa' }}>Swipe gesture to rotate 3D plane.</span>
-                        </div>
-                    </div>
-
-                    {/* Fist */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '15px', width: '26px' }}>✊</span>
-                        <div>
-                            <strong style={{ display: 'block', color: '#ffaa00', fontSize: '11px' }}>FIST GESTURE</strong>
-                            <span style={{ fontSize: '10px', color: '#aaa' }}>Lock / Unlock active plane.</span>
-                        </div>
-                    </div>
-
-                    {/* Pinch */}
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <span style={{ fontSize: '15px', width: '26px' }}>🤏</span>
-                        <div>
-                            <strong style={{ display: 'block', color: '#ffea00', fontSize: '11px' }}>PINCH GESTURE</strong>
-                            <span style={{ fontSize: '10px', color: '#aaa' }}>Pinch to draw when plane is locked.</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* ---------------------------------------------
+            {/* ================================================
                 3D PLANE SELECTOR BAR (BOTTOM CENTER)
-            --------------------------------------------- */}
+            ================================================ */}
             <div style={{
                 position: 'absolute',
                 bottom: 24,
-                left: '50%',
+                left: `calc(50% + ${SIDEBAR_W / 2}px)`,
                 transform: 'translateX(-50%)',
-                background: 'rgba(15, 18, 28, 0.92)',
+                background: 'rgba(10, 13, 22, 0.92)',
                 backdropFilter: 'blur(16px)',
                 border: '1px solid rgba(0, 240, 255, 0.35)',
                 borderRadius: '30px',
@@ -583,203 +520,246 @@ export function UIOverlay() {
                 alignItems: 'center',
                 gap: '10px',
                 zIndex: 20,
-                boxShadow: '0 10px 40px rgba(0,240,255,0.2)'
+                boxShadow: '0 10px 40px rgba(0,240,255,0.2)',
+                transition: 'left 0.25s cubic-bezier(0.4,0,0.2,1)',
+                pointerEvents: 'auto',
+                flexWrap: 'wrap'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#00f0ff', fontSize: '12px', fontWeight: 'bold', marginRight: '2px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#00f0ff', fontSize: '12px', fontWeight: 'bold' }}>
                     <Compass size={16} />
                     <span>3D PLANE:</span>
                 </div>
 
+                <button onClick={() => { setPresetPlane('XY'); setShowZOffsetPopover(false); }}
+                    title="XY Plane (Normal = Z)" style={presetBtnStyle(activePreset === 'XY' && planePosition[2] === 0)}>XY</button>
+
+                {/* XY + Z Offset */}
                 <button
-                    onClick={() => setPresetPlane('XY')}
-                    title="XY Plane (Normal = Z axis). Red=X horizontal, Green=Y vertical."
-                    style={presetBtnStyle(activePreset === 'XY')}
-                >
-                    XY
-                </button>
-
-                <button
-                    onClick={() => setPresetPlane('YZ')}
-                    title="YZ Plane (Normal = X axis). Blue=Z horizontal, Green=Y vertical."
-                    style={presetBtnStyle(activePreset === 'YZ')}
-                >
-                    YZ
-                </button>
-
-                <button
-                    onClick={() => setPresetPlane('XZ')}
-                    title="XZ Plane (Normal = Y axis). Red=X horizontal, Blue=Z vertical."
-                    style={presetBtnStyle(activePreset === 'XZ')}
-                >
-                    XZ
-                </button>
-
-                <button
-                    onClick={() => setPresetPlane('ISO')}
-                    title="Isometric 3D Perspective View (45°)"
-                    style={presetBtnStyle(activePreset === 'ISO')}
-                >
-                    ISO (3D)
-                </button>
-
-                <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)' }} />
-
-                {/* X Position Offset */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    <span style={{ fontSize: '11px', color: '#ff5555', fontWeight: 'bold' }}>X:</span>
-                    <button
-                        onClick={() => setPlaneOffset('X', planePosition[0] - 1)}
-                        title="Move Plane -1 X"
-                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
-                    >
-                        -1
-                    </button>
-                    <span style={{ fontSize: '11px', minWidth: '16px', textAlign: 'center', color: '#fff', fontWeight: '600' }}>
-                        {planePosition[0]}
-                    </span>
-                    <button
-                        onClick={() => setPlaneOffset('X', planePosition[0] + 1)}
-                        title="Move Plane +1 X"
-                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
-                    >
-                        +1
-                    </button>
-                </div>
-
-                {/* Y Position Offset (Height) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    <span style={{ fontSize: '11px', color: '#00ff66', fontWeight: 'bold' }}>Y:</span>
-                    <button
-                        onClick={() => setPlaneOffset('Y', planePosition[1] - 1)}
-                        title="Lower Plane Height (-1 Y)"
-                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
-                    >
-                        -1
-                    </button>
-                    <span style={{ fontSize: '11px', minWidth: '16px', textAlign: 'center', color: '#fff', fontWeight: '600' }}>
-                        {planePosition[1]}
-                    </span>
-                    <button
-                        onClick={() => setPlaneOffset('Y', planePosition[1] + 1)}
-                        title="Raise Plane Height (+1 Y)"
-                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
-                    >
-                        +1
-                    </button>
-                </div>
-
-                {/* Z Position Offset */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    <span style={{ fontSize: '11px', color: '#3399ff', fontWeight: 'bold' }}>Z:</span>
-                    <button
-                        onClick={() => setPlaneOffset('Z', planePosition[2] - 1)}
-                        title="Move Plane -1 Z"
-                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
-                    >
-                        -1
-                    </button>
-                    <span style={{ fontSize: '11px', minWidth: '16px', textAlign: 'center', color: '#fff', fontWeight: '600' }}>
-                        {planePosition[2]}
-                    </span>
-                    <button
-                        onClick={() => setPlaneOffset('Z', planePosition[2] + 1)}
-                        title="Move Plane +1 Z"
-                        style={{ ...btnStyle, padding: '5px 8px', fontSize: '11px' }}
-                    >
-                        +1
-                    </button>
-                </div>
-
-                {/* Reset Origin */}
-                <button
+                    id="btn-xy-offset-z"
                     onClick={() => {
-                        setPlaneOffset('X', 0);
-                        setPlaneOffset('Y', 0);
-                        setPlaneOffset('Z', 0);
+                        const t = planePosition[2] !== 0 ? planePosition[2] : 2;
+                        startDrawingXYWithZOffset(t);
+                        setShowZOffsetPopover((p) => !p || activePreset !== 'XY');
                     }}
-                    title="Reset Plane Origin to (0, 0, 0)"
-                    style={{ ...btnStyle, fontSize: '11px', padding: '5px 10px', color: '#00f0ff', borderColor: 'rgba(0,240,255,0.3)' }}
+                    title="XY Plane with Z offset"
+                    style={{
+                        ...presetBtnStyle(activePreset === 'XY' && planePosition[2] !== 0),
+                        background: (activePreset === 'XY' && planePosition[2] !== 0)
+                            ? 'linear-gradient(135deg, rgba(0,240,255,0.4), rgba(0,114,255,0.5))'
+                            : 'rgba(0,240,255,0.1)',
+                        border: (activePreset === 'XY' && planePosition[2] !== 0) ? '1px solid #00f0ff' : '1px solid rgba(0,240,255,0.3)',
+                        color: '#66d9ff',
+                        display: 'flex', alignItems: 'center', gap: '5px'
+                    }}
                 >
-                    Reset (0,0,0)
+                    <Layers size={13} />
+                    <span>XY+Z</span>
+                    <span style={{
+                        background: (activePreset === 'XY' && planePosition[2] !== 0) ? 'rgba(0,240,255,0.3)' : 'rgba(255,255,255,0.1)',
+                        padding: '1px 6px', borderRadius: '10px', fontSize: '10px', color: '#00ffff', fontWeight: 'bold'
+                    }}>
+                        {planePosition[2] !== 0 ? (planePosition[2] > 0 ? `+${planePosition[2]}` : planePosition[2]) : 'Offset'}
+                    </span>
                 </button>
+
+                <button onClick={() => setPresetPlane('YZ')} title="YZ Plane (Normal = X)" style={presetBtnStyle(activePreset === 'YZ')}>YZ</button>
+                <button onClick={() => setPresetPlane('XZ')} title="XZ Plane (Normal = Y)" style={presetBtnStyle(activePreset === 'XZ')}>XZ</button>
+                <button onClick={() => setPresetPlane('ISO')} title="Isometric 3D View" style={presetBtnStyle(activePreset === 'ISO')}>ISO (3D)</button>
 
                 <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)' }} />
 
-                {/* Axis Indicator Legend */}
-                <div 
-                    title="3D Coordinate System Orientation (RGB = XYZ)"
-                    style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '8px', 
-                        background: 'rgba(0, 0, 0, 0.45)', 
-                        padding: '4px 10px', 
-                        borderRadius: '12px',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        fontSize: '11px',
-                        fontWeight: '700',
-                        letterSpacing: '0.5px'
-                    }}
-                >
-                    <span style={{ color: '#888', textTransform: 'uppercase', fontSize: '10px', marginRight: '2px' }}>Axes:</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ff4444' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ff4444', display: 'inline-block', boxShadow: '0 0 6px #ff4444' }} />
-                        Red = X
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#00e676' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00e676', display: 'inline-block', boxShadow: '0 0 6px #00e676' }} />
-                        Green = Y
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#2979ff' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2979ff', display: 'inline-block', boxShadow: '0 0 6px #2979ff' }} />
-                        Blue = Z
-                    </span>
+                {/* Axis offset stepper */}
+                {['X', 'Y', 'Z'].map((axis, i) => {
+                    const axisColors = ['#ff5555', '#00ff66', '#3399ff'];
+                    const val = planePosition[i];
+                    return (
+                        <div key={axis} style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <span style={{ fontSize: '11px', color: axisColors[i], fontWeight: 'bold' }}>{axis}:</span>
+                            <button onClick={() => setPlaneOffset(axis, val - 1)} style={{ ...miniBtn, padding: '5px 8px' }}>-1</button>
+                            <span
+                                style={{ fontSize: '11px', minWidth: '20px', textAlign: 'center', color: val !== 0 ? '#00f0ff' : '#fff', fontWeight: '700', cursor: axis === 'Z' ? 'pointer' : 'default' }}
+                                onClick={axis === 'Z' ? () => { if (activePreset !== 'XY') setPresetPlane('XY'); setShowZOffsetPopover(true); } : undefined}
+                            >{val}</span>
+                            <button onClick={() => setPlaneOffset(axis, val + 1)} style={{ ...miniBtn, padding: '5px 8px' }}>+1</button>
+                        </div>
+                    );
+                })}
+
+                <button
+                    onClick={() => { setPlaneOffset('X', 0); setPlaneOffset('Y', 0); setPlaneOffset('Z', 0); setShowZOffsetPopover(false); }}
+                    title="Reset to origin"
+                    style={{ ...miniBtn, color: '#00f0ff', borderColor: 'rgba(0,240,255,0.3)', padding: '5px 10px', fontSize: '10px' }}
+                >Reset</button>
+
+                <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.2)' }} />
+
+                {/* Axis legend */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '10px', fontWeight: '700', background: 'rgba(0,0,0,0.35)', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    {[['#ff4444','X'], ['#00e676','Y'], ['#2979ff','Z']].map(([c, l]) => (
+                        <span key={l} style={{ display: 'flex', alignItems: 'center', gap: '3px', color: c }}>
+                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: c, display: 'inline-block', boxShadow: `0 0 5px ${c}` }} />
+                            {l}
+                        </span>
+                    ))}
                 </div>
             </div>
+
+            {/* ================================================
+                XY PLANE Z-OFFSET FLOATING CONTROLLER
+            ================================================ */}
+            {showZOffsetPopover && (
+                <div style={{
+                    position: 'absolute',
+                    bottom: 84,
+                    left: `calc(50% + ${SIDEBAR_W / 2}px)`,
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(10, 15, 28, 0.97)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(0,240,255,0.45)',
+                    borderRadius: '20px',
+                    padding: '14px 18px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    zIndex: 25,
+                    boxShadow: '0 12px 40px rgba(0,0,0,0.7), 0 0 24px rgba(0,240,255,0.25)',
+                    minWidth: '340px',
+                    pointerEvents: 'auto'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', color: '#00f0ff', fontSize: '13px', fontWeight: 'bold' }}>
+                            <Layers size={16} />
+                            <span>XY PLANE: Z-AXIS OFFSET</span>
+                        </div>
+                        <button onClick={() => setShowZOffsetPopover(false)} style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: '14px' }}>✕</button>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#aaa' }}>
+                        Set elevation along the <strong style={{ color: '#3399ff' }}>Z Axis</strong>:
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                        <button onClick={() => startDrawingXYWithZOffset(planePosition[2] - 1)} style={{ ...miniBtn, padding: '5px 9px' }}>-1</button>
+                        <button onClick={() => startDrawingXYWithZOffset(Math.round((planePosition[2] - 0.5) * 10) / 10)} style={{ ...miniBtn, padding: '5px 7px', fontSize: '10px' }}>-0.5</button>
+                        <input
+                            type="number" step="0.5" value={planePosition[2]}
+                            onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) startDrawingXYWithZOffset(v); }}
+                            style={{ width: '70px', padding: '5px 8px', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(0,240,255,0.5)', borderRadius: '8px', color: '#00f0ff', fontSize: '13px', fontWeight: 'bold', textAlign: 'center', outline: 'none' }}
+                        />
+                        <button onClick={() => startDrawingXYWithZOffset(Math.round((planePosition[2] + 0.5) * 10) / 10)} style={{ ...miniBtn, padding: '5px 7px', fontSize: '10px' }}>+0.5</button>
+                        <button onClick={() => startDrawingXYWithZOffset(planePosition[2] + 1)} style={{ ...miniBtn, padding: '5px 9px' }}>+1</button>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                        <span style={{ fontSize: '11px', color: '#888' }}>Quick:</span>
+                        {[1, 2, 3, 5].map((v) => (
+                            <button key={v} onClick={() => startDrawingXYWithZOffset(v)} style={{ ...miniBtn, padding: '4px 9px', fontSize: '11px', background: planePosition[2] === v ? 'rgba(0,240,255,0.25)' : 'rgba(255,255,255,0.05)', borderColor: planePosition[2] === v ? '#00f0ff' : 'rgba(255,255,255,0.12)', color: planePosition[2] === v ? '#00f0ff' : '#ccc' }}>+{v}</button>
+                        ))}
+                        <button onClick={() => startDrawingXYWithZOffset(0)} style={{ ...miniBtn, padding: '4px 9px', fontSize: '11px', color: '#888' }}>0</button>
+                    </div>
+                    <button
+                        onClick={() => { startDrawingXYWithZOffset(planePosition[2] !== 0 ? planePosition[2] : 2); setShowZOffsetPopover(false); }}
+                        style={{ background: 'linear-gradient(135deg, #00c6ff, #0072ff)', border: 'none', borderRadius: '10px', color: '#fff', padding: '9px 14px', fontWeight: '700', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', boxShadow: '0 4px 16px rgba(0,114,255,0.45)' }}
+                    >
+                        <Pencil size={14} />
+                        <span>Draw on XY (Z = {planePosition[2] > 0 ? `+${planePosition[2]}` : planePosition[2]})</span>
+                    </button>
+                </div>
+            )}
         </>
     );
 }
 
-const btnStyle = {
+// ============================================================
+// SIDEBAR SUB-COMPONENTS
+// ============================================================
+
+function SidebarSection({ label, open, children }) {
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {open && (
+                <div style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '1.5px', color: '#444', textTransform: 'uppercase', padding: '4px 6px 2px', fontFamily: 'monospace' }}>
+                    {label}
+                </div>
+            )}
+            {children}
+        </div>
+    );
+}
+
+function SidebarDivider() {
+    return <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '4px 0' }} />;
+}
+
+function SidebarBtn({ icon, label, shortcut, active, open, onClick, disabled, activeColor = '#00f0ff', accentColor, title }) {
+    const color = active ? activeColor : (accentColor || '#aaa');
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            title={title || (open ? undefined : label + (shortcut ? ` [${shortcut}]` : ''))}
+            style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: open ? '9px' : '0',
+                justifyContent: open ? 'flex-start' : 'center',
+                padding: open ? '8px 10px' : '9px',
+                borderRadius: '10px',
+                border: active ? `1px solid ${activeColor}44` : '1px solid transparent',
+                background: active
+                    ? `linear-gradient(135deg, ${activeColor}22, ${activeColor}0a)`
+                    : 'transparent',
+                color: disabled ? '#333' : color,
+                fontSize: '12px',
+                fontWeight: active ? '700' : '500',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                width: '100%',
+                textAlign: 'left',
+                transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                boxShadow: active ? `0 0 10px ${activeColor}22` : 'none',
+                opacity: disabled ? 0.35 : 1
+            }}
+            onMouseEnter={(e) => { if (!disabled && !active) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+            onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+        >
+            <span style={{ flexShrink: 0, color: disabled ? '#333' : color }}>{icon}</span>
+            {open && (
+                <>
+                    <span style={{ flex: 1, color: disabled ? '#333' : active ? activeColor : '#ddd' }}>{label}</span>
+                    {shortcut && <span style={{ fontSize: '9px', color: '#444', fontFamily: 'monospace', background: 'rgba(255,255,255,0.05)', padding: '1px 5px', borderRadius: '4px', flexShrink: 0 }}>{shortcut}</span>}
+                </>
+            )}
+        </button>
+    );
+}
+
+// ============================================================
+// STYLE CONSTANTS
+// ============================================================
+
+const miniBtn = {
     display: 'flex',
     alignItems: 'center',
-    gap: '5px',
-    padding: '7px 12px',
-    borderRadius: '16px',
-    border: '1px solid rgba(255,255,255,0.15)',
-    background: '#1a1f2c',
-    color: '#eee',
-    fontSize: '12px',
+    gap: '4px',
+    padding: '6px 10px',
+    borderRadius: '12px',
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.04)',
+    color: '#ccc',
+    fontSize: '11px',
     fontWeight: '600',
     cursor: 'pointer',
     transition: 'all 0.15s ease'
 };
 
-const toolBtnStyle = (active) => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: '5px',
-    padding: '7px 13px',
-    borderRadius: '16px',
-    border: active ? '1px solid #00f0ff' : '1px solid rgba(255,255,255,0.15)',
-    background: active ? 'linear-gradient(135deg, #00f0ff, #0072ff)' : '#1a1f2c',
-    color: active ? '#ffffff' : '#ccc',
-    fontWeight: active ? '700' : '600',
-    fontSize: '12px',
-    cursor: 'pointer',
-    boxShadow: active ? '0 0 14px rgba(0,240,255,0.45)' : 'none',
-    transition: 'all 0.2s ease'
-});
-
 const presetBtnStyle = (active) => ({
-    padding: '6px 12px',
+    padding: '6px 13px',
     borderRadius: '16px',
-    border: active ? '1px solid #00f0ff' : '1px solid rgba(255,255,255,0.15)',
-    background: active ? 'linear-gradient(135deg, #00f0ff, #0072ff)' : '#1a1f2c',
+    border: active ? '1px solid #00f0ff' : '1px solid rgba(255,255,255,0.12)',
+    background: active ? 'linear-gradient(135deg, #00f0ff, #0072ff)' : 'rgba(255,255,255,0.04)',
     color: active ? '#ffffff' : '#ccc',
     fontWeight: 'bold',
     fontSize: '11px',
     cursor: 'pointer',
-    boxShadow: active ? '0 0 12px rgba(0,240,255,0.45)' : 'none',
+    boxShadow: active ? '0 0 12px rgba(0,240,255,0.4)' : 'none',
     transition: 'all 0.2s ease'
 });

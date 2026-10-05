@@ -25,6 +25,7 @@ function PlaneAxisLine({ start, end, color }) {
 
 export function WorkingPlane() {
     const activePreset = useCadStore((state) => state.activePreset);
+    const planePosition = useCadStore((state) => state.planePosition);
 
     // Determine semantic axis assignments based on active plane preset
     // In local plane space:
@@ -110,6 +111,21 @@ export function WorkingPlane() {
                     <Text position={axisConfig.normal.labelPos} fontSize={0.25} color={axisConfig.normal.color} anchorX="center" anchorY="middle">
                         {axisConfig.normal.label}
                     </Text>
+
+                    {/* Z Offset Elevation Badge on XY Plane */}
+                    {activePreset === 'XY' && planePosition[2] !== 0 && (
+                        <Text
+                            position={[0, 0.05, 0.9]}
+                            fontSize={0.28}
+                            color="#00ffff"
+                            anchorX="center"
+                            anchorY="middle"
+                            outlineWidth={0.02}
+                            outlineColor="#002b3d"
+                        >
+                            {`XY Plane (Offset Z = ${planePosition[2] > 0 ? '+' : ''}${planePosition[2]})`}
+                        </Text>
+                    )}
                 </group>
             )}
         </group>

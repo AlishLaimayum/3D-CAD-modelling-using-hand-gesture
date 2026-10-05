@@ -25,8 +25,24 @@ import { PositionSmoother, SMOOTHING_PRESETS } from '../utils/smoothing';
 import { GestureStateMachine, GestureStates } from '../utils/gestureStateMachine';
 import { SnappingEngine } from '../utils/snappingEngine';
 import { recognizeShape } from '../utils/shapeRecognizer';
+import { Profile2D, GEOMETRY_KIND } from '../cad/geometry/index.js';
 
-export function useGestureInteraction(zElongation) {
+/**
+ * Convert a face's world-space normal + tangent into a THREE.Euler that can
+ * be stored as planeRotation on a new CAD object.
+ * PlaneManager uses Euler to orient its local Y axis to the normal,
+ * so we rotate from [0,1,0] to the face normal.
+ */
+function facePlaneToEuler(normalArr, tangentArr) {
+    const n = new THREE.Vector3(...normalArr).normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
+    const euler = new THREE.Euler().setFromQuaternion(q, 'XYZ');
+    return [euler.x, euler.y, euler.z];
+}
+
+
+
+export function useGestureInteraction(zElongation, controlsRef) {
     const { camera, gl } = useThree();
 
     const zElongationRef = useRef(zElongation);
@@ -87,6 +103,12 @@ export function useGestureInteraction(zElongation) {
     const gestureStateMachine = gestureStateMachineRef.current;
     const snappingEngine = snappingEngineRef.current;
 
+    // Keep a stable ref to controlsRef so WebSocket callback can access it
+    const controlsRefRef = useRef(controlsRef);
+    useEffect(() => {
+        controlsRefRef.current = controlsRef;
+    }, [controlsRef]);
+
     // ---------------------------------------------
     // PREALLOCATED THREE.JS OBJECTS (ZERO ALLOCATIONS IN HOT PATH)
     // ---------------------------------------------
@@ -112,8 +134,10 @@ export function useGestureInteraction(zElongation) {
     const setGestureState = useCadStore((state) => state.setGestureState);
     const setPlaneLocked = useCadStore((state) => state.setPlaneLocked);
     const setPlaneRotation = useCadStore((state) => state.setPlaneRotation);
+    const gestureRotatePlane = useCadStore((state) => state.gestureRotatePlane);
     const setSnappedInfo = useCadStore((state) => state.setSnappedInfo);
     const addCADObject = useCadStore((state) => state.addCADObject);
+    const selectedFace = useCadStore((state) => state.selectedFace);
 
     // Keep active store values synced in refs for zero-overhead callback access
     const cadObjectsRef = useRef(cadObjects);
@@ -121,6 +145,10 @@ export function useGestureInteraction(zElongation) {
 
     const drawingModeRef = useRef(drawingMode);
     drawingModeRef.current = drawingMode;
+
+    // Face plane ref — used inside pointer callbacks without closure stale-value issues
+    const selectedFaceRef = useRef(selectedFace);
+    selectedFaceRef.current = selectedFace;
 
     // Ref-tracked hold mode flag — checked in hot-path callbacks without closure issues
     const zHoldRef = useRef(zHoldModeEnabled);
@@ -166,6 +194,28 @@ export function useGestureInteraction(zElongation) {
             [cx, cy, cz],
             [sx, sy, cz]
         ];
+    }, []);
+
+    // ---------------------------------------------
+    // GEOMETRIC HELPER: COMPUTE CIRCLE ON PLANE
+    // Center is startPos, radius is distance to currentPos
+    // ---------------------------------------------
+    const CIRCLE_SEGMENTS = 64;
+    const computeCirclePoints = useCallback((centerPos, edgePos) => {
+        if (!centerPos || !edgePos) return null;
+
+        const cx = centerPos[0], cy = centerPos[1], cz = centerPos[2];
+        const dx = edgePos[0] - cx;
+        const dz = edgePos[2] - cz;
+        const radius = Math.sqrt(dx * dx + dz * dz);
+        if (radius < 0.001) return null;
+
+        const pts = [];
+        for (let i = 0; i <= CIRCLE_SEGMENTS; i++) {
+            const angle = (i / CIRCLE_SEGMENTS) * Math.PI * 2;
+            pts.push([cx + radius * Math.cos(angle), cy, cz + radius * Math.sin(angle)]);
+        }
+        return pts;
     }, []);
 
     // ---------------------------------------------
@@ -286,6 +336,11 @@ export function useGestureInteraction(zElongation) {
             activeDrawingRef.current.previewCorners = computeRectangleCorners(startPos, activePoint);
         }
 
+        // If drawing a circle, calculate preview circle points (center = startPos, edge = activePoint)
+        if (activeDrawingRef.current.type === 'CIRCLE' && startPos) {
+            activeDrawingRef.current.previewCircle = computeCirclePoints(startPos, activePoint);
+        }
+
         // ---------------------------------------------------------
         // MOTION DETECTION FOR HOLD-TO-PERFECT-SHAPE
         // Only for FREEHAND mode — other modes have explicit shapes
@@ -308,7 +363,7 @@ export function useGestureInteraction(zElongation) {
         } else {
             lastDrawPointRef.current = activePoint ? [...activePoint] : null;
         }
-    }, [drawingSmoother, snappingEngine, planeManager, computeRectangleCorners, clearShapeHoldTimer, startShapeHoldTimer]);
+    }, [drawingSmoother, snappingEngine, planeManager, computeRectangleCorners, computeCirclePoints, clearShapeHoldTimer, startShapeHoldTimer]);
 
     const finalizeDrawing = useCallback(() => {
         if (!activeDrawingRef.current.active) return;
@@ -354,9 +409,23 @@ export function useGestureInteraction(zElongation) {
             } else {
                 finalPoints = [points[0], points[points.length - 1]];
             }
+        } else if (currentMode === 'CIRCLE') {
+            // Circle: center = start point, edge = end point → generate 64 circle points
+            const startPos = points[0];
+            const endPos = points[points.length - 1];
+            const circlePts = computeCirclePoints(startPos, endPos);
+            if (circlePts && circlePts.length >= 3) {
+                finalPoints = circlePts;
+            } else {
+                finalPoints = [points[0], points[points.length - 1]];
+            }
         }
 
         // Verify minimum segment length
+        if (!finalPoints || finalPoints.length < 2 || !finalPoints[0] || !finalPoints[finalPoints.length - 1]) {
+            drawingPointsRef.current = [];
+            return;
+        }
         const s = finalPoints[0];
         const e = finalPoints[finalPoints.length - 1];
         const dist = Math.hypot(e[0] - s[0], e[1] - s[1], e[2] - s[2]);
@@ -365,21 +434,34 @@ export function useGestureInteraction(zElongation) {
             return;
         }
 
-        // Construct completed CAD object and commit via CommandManager (Zustand + Undo Stack)
+        // Construct Category 1: 2D Geometry profile
+        const profile = new Profile2D({
+            points: finalPoints,
+            type: finalType,
+            isClosed: finalType === 'RECTANGLE'
+        });
+
+        // Use face plane when a face is selected, otherwise use working plane
+        const face = selectedFaceRef.current;
         const newCADObject = {
             id: `cad_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
             type: finalType,
+            kind: GEOMETRY_KIND.SKETCH_2D, // Category 1: 2D Geometry initially
             points: finalPoints,
             start: finalPoints[0],
             end: finalPoints[finalPoints.length - 1],
-            planePosition: [...planeManager.getPosition()],
-            planeRotation: [...planeManager.getRotation()],
+            profile: profile,
+            solidMesh: null,
+            extrudeHeight: 0,
+            isClosed: finalType === 'RECTANGLE' || finalType === 'CIRCLE',
+            planePosition: face ? [...face.position] : [...planeManager.getPosition()],
+            planeRotation: face ? facePlaneToEuler(face.normal, face.tangent) : [...planeManager.getRotation()],
             createdAt: Date.now()
         };
 
         addCADObject(newCADObject);
         drawingPointsRef.current = [];
-    }, [addCADObject, computeRectangleCorners, clearShapeHoldTimer, drawingSmoother, planeManager]);
+    }, [addCADObject, computeRectangleCorners, computeCirclePoints, clearShapeHoldTimer, drawingSmoother, planeManager]);
 
     // ---------------------------------------------
     // WEBSOCKET INTERACTION & GESTURE PROCESSING
@@ -421,7 +503,11 @@ export function useGestureInteraction(zElongation) {
             setPlaneLocked(data.locked);
             planeManager.setLocked(data.locked);
 
-            // 2. PALM ROTATION
+            // 2. GESTURE PLANE ROTATION (OPEN_PALM / ROTATING)
+            // Rotates the plane via PlaneRotationController, then calls gestureRotatePlane
+            // which updates BOTH the store planeRotation AND every cadObject's frozen
+            // planeRotation — so geometry rigidly follows the plane without being
+            // inside the plane group (which would break XY/YZ/XZ preset switching).
             if (effectiveState === GestureStates.ROTATING || data.state === 'OPEN_PALM') {
                 if (data.swipe) {
                     const previous = previousSwipeRef.current;
@@ -429,17 +515,17 @@ export function useGestureInteraction(zElongation) {
                         const dx = data.swipe.x - previous.x;
                         const dy = data.swipe.y - previous.y;
 
-                        // Compute palm roll delta with atan2 wrap-around correction
                         let dangle = 0;
                         if (data.swipe.angle !== undefined && previous.angle !== undefined) {
                             dangle = data.swipe.angle - previous.angle;
-                            // Normalise to (-π, π] to handle the ±π wrap boundary
                             if (dangle > Math.PI)  dangle -= 2 * Math.PI;
                             if (dangle < -Math.PI) dangle += 2 * Math.PI;
                         }
 
                         rotationController.update(dx, dy, camera, data.state, dangle);
-                        setPlaneRotation(planeManager.getRotation());
+                        // gestureRotatePlane syncs the new rotation to all cadObjects
+                        // so their frozen planeRotation matches the live plane.
+                        gestureRotatePlane(planeManager.getRotation());
                         cursorSmoother.reset();
                         drawingSmoother.reset();
                     } else {
@@ -505,7 +591,10 @@ export function useGestureInteraction(zElongation) {
                     setSnappedInfo({ isSnapped: snapResult.isSnapped, point: snapResult.snappedTarget });
 
                     // Handle Gesture Pinch Drawing vs. Z-Elongation
-                    const isPinching = (effectiveState === GestureStates.DRAWING || effectiveState === GestureStates.PINCH_START) && data.locked;
+                    const rawPinch = data.state === 'PINCH' || (data.pinch_ratio !== undefined && data.pinch_ratio !== null && data.pinch_ratio < 0.48);
+                    const isPinching = zHoldRef.current
+                        ? (rawPinch || effectiveState === GestureStates.DRAWING || effectiveState === GestureStates.PINCH_START)
+                        : ((effectiveState === GestureStates.DRAWING || effectiveState === GestureStates.PINCH_START) && data.locked);
 
                     if (zHoldRef.current) {
                         // Drawing disabled in Hold mode — route pinch gestures directly to Z-Elongation
@@ -513,7 +602,8 @@ export function useGestureInteraction(zElongation) {
                             isGestureDrawingRef.current = false;
                             finalizeDrawing();
                         }
-                        zElongationRef.current?.handleGesturePinchUpdate?.(isPinching, finalPos, data.cursor.y);
+                        const ndc = { x: data.cursor.x * 2 - 1, y: -(data.cursor.y * 2) + 1 };
+                        zElongationRef.current?.handleGesturePinchUpdate?.(isPinching, ndc);
                     } else if (isPinching) {
                         if (!isGestureDrawingRef.current) {
                             isGestureDrawingRef.current = true;
@@ -532,7 +622,7 @@ export function useGestureInteraction(zElongation) {
             } else {
                 cursorPosRef.current = null;
                 if (zHoldRef.current) {
-                    zElongationRef.current?.handleGesturePinchUpdate?.(false, null, 0);
+                    zElongationRef.current?.handleGesturePinchUpdate?.(false, null);
                 }
                 if (isGestureDrawingRef.current) {
                     isGestureDrawingRef.current = false;
@@ -567,6 +657,7 @@ export function useGestureInteraction(zElongation) {
         setGestureState,
         setPlaneLocked,
         setPlaneRotation,
+        gestureRotatePlane,
         setSnappedInfo,
         startDrawing,
         appendDrawingPoint,
@@ -580,6 +671,12 @@ export function useGestureInteraction(zElongation) {
         const domElement = gl.domElement;
         if (!domElement) return;
 
+        /**
+         * Compute the ray-plane intersection for the current pointer event.
+         * If a face is selected, intersects with that face's plane and returns
+         * coordinates in the face's local frame (tangent / bitangent / normal).
+         * Otherwise falls back to the working plane.
+         */
         const getPlaneIntersection = (event) => {
             const rect = domElement.getBoundingClientRect();
             const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -588,6 +685,31 @@ export function useGestureInteraction(zElongation) {
             ndcVec.set(x, y);
             raycaster.setFromCamera(ndcVec, camera);
 
+            const face = selectedFaceRef.current;
+
+            if (face) {
+                // --- Face-attached plane intersection ---
+                const normal   = new THREE.Vector3(...face.normal);
+                const planePos = new THREE.Vector3(...face.position);
+                const denom    = raycaster.ray.direction.dot(normal);
+                if (Math.abs(denom) > 1e-6) {
+                    const t = planePos.clone().sub(raycaster.ray.origin).dot(normal) / denom;
+                    if (t >= 0) {
+                        const hit = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, t);
+                        // Express hit in face-local coords (tangent, bitangent, normal)
+                        const localVec = hit.clone().sub(planePos);
+                        const tang = new THREE.Vector3(...face.tangent);
+                        const btan = new THREE.Vector3(...face.bitangent);
+                        const u = localVec.dot(tang);
+                        const v = localVec.dot(btan);
+                        // Return as [u, 0, v] so existing 2D drawing tools work unchanged
+                        return [u, 0, v];
+                    }
+                }
+                return null;
+            }
+
+            // --- Working plane intersection (original behaviour) ---
             const normal = planeManager.getNormal();
             const planePos = tempPlanePos.set(...planeManager.getPosition());
             const denom = raycaster.ray.direction.dot(normal);
@@ -684,7 +806,8 @@ export function useGestureInteraction(zElongation) {
         setSnappedInfo,
         startDrawing,
         appendDrawingPoint,
-        finalizeDrawing
+        finalizeDrawing,
+        clearShapeHoldTimer
     ]);
 
     // Expose refs for direct rendering in Canvas children

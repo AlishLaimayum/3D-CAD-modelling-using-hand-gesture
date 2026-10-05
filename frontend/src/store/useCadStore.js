@@ -17,8 +17,16 @@ import { cadCommandManager } from '../cad/CommandManager';
 import { 
     CreateCADObjectCommand, 
     ClearCADObjectsCommand,
-    UpdateCADObjectCommand
+    UpdateCADObjectCommand,
+    DeleteCADObjectCommand
 } from '../cad/commands/CADCommands';
+import { 
+    GEOMETRY_KIND, 
+    Profile2D, 
+    ExtrusionEngine, 
+    SolidMesh 
+} from '../cad/geometry/index.js';
+import { faceToEuler } from '../cad/geometry/FaceEnumerator.js';
 
 export const useCadStore = create((set, get) => {
     // Synchronize CommandManager stack availability with store
@@ -28,10 +36,17 @@ export const useCadStore = create((set, get) => {
 
     return {
         // ---------------------------------------------
-        // PERSISTENT CAD OBJECTS
+        // PERSISTENT CAD OBJECTS & SELECTION
         // ---------------------------------------------
         cadObjects: [],
-        drawingMode: 'FREEHAND', // 'FREEHAND' | 'LINE' | 'RECTANGLE'
+        selectedObjectId: null,
+        hoveredObjectId: null,
+        drawingMode: 'SELECT', // 'SELECT' | 'FREEHAND' | 'LINE' | 'RECTANGLE' | 'CIRCLE'
+
+        // Face / Surface selection — null when no face is selected
+        // Shape: { objectId, faceLabel, normal: [x,y,z], position: [x,y,z], tangent: [x,y,z], bitangent: [x,y,z] }
+        selectedFace: null,
+        savedPlaneState: null,
         
         // Backwards-compatible getter for legacy lines
         get lines() {
@@ -82,8 +97,93 @@ export const useCadStore = create((set, get) => {
 
         setDrawingMode: (mode) => {
             if (get().drawingMode !== mode) {
-                set({ drawingMode: mode });
+                const updates = { drawingMode: mode };
+                // Clear object selection when switching to a drawing tool UNLESS a face is selected
+                if (mode !== 'SELECT' && !get().selectedFace) {
+                    updates.selectedObjectId = null;
+                }
+                set(updates);
             }
+        },
+
+        selectObject: (id) => {
+            if (get().selectedObjectId !== id) {
+                set({ selectedObjectId: id, drawingMode: 'SELECT' });
+            }
+        },
+
+        deselectObject: () => {
+            const saved = get().savedPlaneState;
+            if (saved) {
+                set({
+                    selectedObjectId: null,
+                    selectedFace: null,
+                    savedPlaneState: null,
+                    planePosition: saved.planePosition,
+                    planeRotation: saved.planeRotation,
+                    activePreset: saved.activePreset,
+                });
+            } else {
+                set({ selectedObjectId: null, selectedFace: null });
+            }
+        },
+
+        setSelectedFace: (face) => {
+            if (!face) {
+                get().clearSelectedFace();
+                return;
+            }
+            const currentSaved = get().savedPlaneState || {
+                planePosition: [...get().planePosition],
+                planeRotation: [...get().planeRotation],
+                activePreset: get().activePreset,
+            };
+
+            const faceEuler = faceToEuler(face);
+
+            set({
+                selectedFace: face,
+                savedPlaneState: currentSaved,
+                planePosition: [...face.position],
+                planeRotation: faceEuler,
+                activePreset: 'CUSTOM',
+            });
+        },
+
+        clearSelectedFace: () => {
+            const saved = get().savedPlaneState;
+            if (saved) {
+                set({
+                    selectedFace: null,
+                    savedPlaneState: null,
+                    planePosition: saved.planePosition,
+                    planeRotation: saved.planeRotation,
+                    activePreset: saved.activePreset,
+                });
+            } else {
+                set({ selectedFace: null });
+            }
+        },
+
+        setHoveredObjectId: (id) => {
+            if (get().hoveredObjectId !== id) {
+                set({ hoveredObjectId: id });
+            }
+        },
+
+        deleteSelectedObject: () => {
+            const id = get().selectedObjectId;
+            if (!id) return;
+            const obj = get().cadObjects.find((o) => o.id === id);
+            if (!obj) return;
+            const storeApi = {
+                internalAddObject: get().internalAddObject,
+                internalRemoveObject: get().internalRemoveObject,
+                internalSetObjects: get().internalSetObjects
+            };
+            const command = new DeleteCADObjectCommand(obj, storeApi);
+            cadCommandManager.execute(command);
+            set({ selectedObjectId: null, hoveredObjectId: null });
         },
 
         setGestureState: (state) => {
@@ -101,7 +201,23 @@ export const useCadStore = create((set, get) => {
         setPlaneRotation: (rotation) => set({ planeRotation: rotation }),
         setPlanePosition: (position) => set({ planePosition: position }),
 
-        toggleZHoldMode: () => set((state) => ({ zHoldModeEnabled: !state.zHoldModeEnabled })),
+        // Called ONLY by gesture rotation. Updates the working plane AND syncs every
+        // existing object's frozen planeRotation so geometry rigidly follows the plane.
+        // XY/YZ/XZ preset switches must NOT call this — they use setPlaneRotation so
+        // completed objects stay at their original world positions.
+        gestureRotatePlane: (rotation) => set((state) => ({
+            planeRotation: rotation,
+            cadObjects: state.cadObjects.map((o) => ({ ...o, planeRotation: rotation }))
+        })),
+
+        toggleZHoldMode: () => set((state) => {
+            const next = !state.zHoldModeEnabled;
+            return {
+                zHoldModeEnabled: next,
+                hoveredObjectId: null,
+                ...(next ? { drawingMode: 'SELECT' } : {})
+            };
+        }),
 
         cameraTargetPosition: null,
         cameraTargetUp: null,
@@ -144,11 +260,17 @@ export const useCadStore = create((set, get) => {
                 camPos = [px, py + 9, pz + 0.0001];
                 camUp = [0, 0, -1];
             } else if (preset === 'ISO') {
-                // Isometric 3D angle
-                rot = [0, 0, 0];
-                normal = [0, 1, 0];
+                // ISO is a VIEW-ONLY change — move the camera only.
+                // Do NOT touch planeRotation or activePlaneNormal; geometry must
+                // stay on the plane it was drawn on (XY, YZ, or XZ).
                 camPos = [px + 7, py + 7, pz + 7];
                 camUp = [0, 1, 0];
+                return {
+                    activePreset: 'ISO',
+                    cameraTargetPosition: camPos,
+                    cameraTargetUp: camUp
+                    // planeRotation and activePlaneNormal intentionally unchanged
+                };
             }
 
             return { 
@@ -160,13 +282,44 @@ export const useCadStore = create((set, get) => {
             };
         }),
 
+        startDrawingXYWithZOffset: (offset = 2) => set((state) => {
+            const zVal = (typeof offset === 'number' && !isNaN(offset))
+                ? offset
+                : (state.planePosition[2] !== 0 ? state.planePosition[2] : 2);
+
+            const px = state.planePosition[0];
+            const py = state.planePosition[1];
+            const pz = zVal;
+
+            const rot = [Math.PI / 2, 0, 0];
+            const normal = [0, 0, 1];
+            const camPos = [px, py, pz + 9];
+            const camUp = [0, 1, 0];
+
+            return {
+                activePreset: 'XY',
+                planeRotation: rot,
+                planePosition: [px, py, pz],
+                activePlaneNormal: normal,
+                cameraTargetPosition: camPos,
+                cameraTargetUp: camUp,
+                zHoldModeEnabled: false,
+                drawingMode: state.drawingMode === 'HOLD' ? 'FREEHAND' : state.drawingMode
+            };
+        }),
+
         setPlaneOffset: (axis, value) => set((state) => {
             const current = [...state.planePosition];
             if (axis === 'X') current[0] = value;
             else if (axis === 'Y') current[1] = value;
             else if (axis === 'Z') current[2] = value;
             else if (typeof axis === 'number') current[1] = axis; // backwards compatibility
-            return { planePosition: current };
+
+            const updates = { planePosition: current };
+            if (state.activePreset === 'XY' && axis === 'Z') {
+                updates.cameraTargetPosition = [current[0], current[1], current[2] + 9];
+            }
+            return updates;
         }),
 
         toggleMagneticLock: () => set((state) => ({ magneticLockEnabled: !state.magneticLockEnabled })),
@@ -237,14 +390,98 @@ export const useCadStore = create((set, get) => {
         },
 
         // Internal methods used by Command implementations
-        internalAddObject: (obj) => set((state) => ({ cadObjects: [...state.cadObjects, obj] })),
+        internalAddObject: (obj) => set((state) => {
+            const normalized = { ...obj };
+            if (!normalized.profile && normalized.points) {
+                normalized.profile = new Profile2D({
+                    points: normalized.points,
+                    type: normalized.type || 'FREEHAND',
+                    isClosed: normalized.type === 'RECTANGLE' || normalized.type === 'CIRCLE'
+                });
+            }
+            if (normalized.extrudeHeight > 0.01 && !normalized.solidMesh) {
+                normalized.solidMesh = ExtrusionEngine.extrude(normalized.profile, normalized.extrudeHeight);
+                normalized.kind = normalized.solidMesh.kind;
+            } else if (!normalized.kind) {
+                normalized.kind = GEOMETRY_KIND.SKETCH_2D;
+            }
+            return { cadObjects: [...state.cadObjects, normalized] };
+        }),
+
         internalRemoveObject: (id) => set((state) => ({ 
-            cadObjects: state.cadObjects.filter((o) => o.id !== id) 
+            cadObjects: state.cadObjects.filter((o) => o.id !== id),
+            selectedObjectId: state.selectedObjectId === id ? null : state.selectedObjectId
         })),
-        internalSetObjects: (objects) => set({ cadObjects: objects }),
+
+        internalSetObjects: (objects) => set({
+            cadObjects: objects.map((obj) => {
+                const norm = { ...obj };
+                if (!norm.profile && norm.points) {
+                    norm.profile = new Profile2D({
+                        points: norm.points,
+                        type: norm.type || 'FREEHAND',
+                        isClosed: norm.type === 'RECTANGLE' || norm.type === 'CIRCLE'
+                    });
+                }
+                const h = Math.max(0, norm.extrudeHeight ?? ((norm.scaleZ && norm.scaleZ > 0.05 && norm.scaleZ !== 1) ? norm.scaleZ : 0));
+                if (h > 0.01) {
+                    norm.extrudeHeight = h;
+                    norm.solidMesh = ExtrusionEngine.extrude(norm.profile, h);
+                    norm.kind = norm.solidMesh.kind;
+                } else {
+                    norm.kind = GEOMETRY_KIND.SKETCH_2D;
+                    norm.solidMesh = null;
+                }
+                return norm;
+            })
+        }),
+
         internalUpdateObject: (id, props) => set((state) => ({
-            cadObjects: state.cadObjects.map((o) => o.id === id ? { ...o, ...props } : o)
+            cadObjects: state.cadObjects.map((o) => {
+                if (o.id !== id) return o;
+                const updated = { ...o, ...props };
+
+                if (props.extrudeHeight !== undefined) {
+                    const h = Math.max(0, props.extrudeHeight);
+                    if (h > 0.01) {
+                        if (updated.solidMesh && typeof updated.solidMesh.setExtrusionHeight === 'function') {
+                            updated.solidMesh.setExtrusionHeight(h);
+                            updated.kind = updated.solidMesh.kind;
+                        } else {
+                            const prof = updated.profile || new Profile2D({
+                                points: updated.points || [updated.start, updated.end],
+                                type: updated.type,
+                                isClosed: updated.type === 'RECTANGLE' || updated.type === 'CIRCLE'
+                            });
+                            updated.profile = prof;
+                            updated.solidMesh = ExtrusionEngine.extrude(prof, h);
+                            updated.kind = updated.solidMesh.kind;
+                        }
+                    } else {
+                        updated.kind = GEOMETRY_KIND.SKETCH_2D;
+                        updated.solidMesh = null;
+                    }
+                }
+                return updated;
+            })
         })),
+
+        /**
+         * Extrude a 2D profile or existing object into a 3D solid model.
+         * Primary CAD operation: Sketch -> Profile -> Solid
+         */
+        extrudeObject: (objectId, height = 1.0) => {
+            const id = objectId || get().selectedObjectId;
+            if (!id) return;
+            const current = get().cadObjects.find((o) => o.id === id);
+            if (!current) return;
+
+            const targetHeight = (typeof height === 'number' && height > 0) ? height : 1.5;
+            get().updateCADObject(id, {
+                extrudeHeight: targetHeight,
+                scaleZ: targetHeight
+            });
+        },
 
         /**
          * Update a CAD object's transform properties with undo support.
