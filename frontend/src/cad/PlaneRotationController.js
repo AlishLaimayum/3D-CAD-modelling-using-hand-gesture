@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 class PlaneRotationController {
 
     constructor(planeManager) {
@@ -142,6 +144,47 @@ class PlaneRotationController {
             this.updateVertical(dy, camera);
             return;
         }
+    }
+
+    // ---------------------------------------------
+    // COMPUTE CAMERA-RELATIVE DELTA QUATERNION (FOR MODEL ROTATION)
+    // ---------------------------------------------
+    computeDeltaQuaternion(dx, dy, camera, gesture = null, dangle = 0) {
+        if (!camera) return null;
+
+        const qInc = new THREE.Quaternion();
+
+        if (gesture === 'PEACE' && Math.abs(dx) >= this.deadZone) {
+            const cameraUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+            qInc.setFromAxisAngle(cameraUp, dx * this.rotationSpeed);
+            return qInc;
+        }
+
+        if (gesture === 'OPEN_PALM') {
+            const rollDominant = Math.abs(dangle) > Math.abs(dy) * 1.5;
+            if (rollDominant && Math.abs(dangle) >= this.rollDeadZone) {
+                this.smoothedRoll = this.smoothedRoll + (dangle - this.smoothedRoll) * this.rollSmoothing;
+                if (Math.abs(this.smoothedRoll) >= this.rollDeadZone) {
+                    const cameraForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+                    qInc.setFromAxisAngle(cameraForward, this.smoothedRoll * this.rollSpeed);
+                    return qInc;
+                }
+            } else if (Math.abs(dy) >= this.deadZone) {
+                const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
+                qInc.setFromAxisAngle(cameraRight, dy * this.rotationSpeed);
+                return qInc;
+            }
+        } else if (Math.abs(dx) >= this.deadZone) {
+            const cameraUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+            qInc.setFromAxisAngle(cameraUp, dx * this.rotationSpeed);
+            return qInc;
+        } else if (Math.abs(dy) >= this.deadZone) {
+            const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
+            qInc.setFromAxisAngle(cameraRight, dy * this.rotationSpeed);
+            return qInc;
+        }
+
+        return null;
     }
 
     // ---------------------------------------------

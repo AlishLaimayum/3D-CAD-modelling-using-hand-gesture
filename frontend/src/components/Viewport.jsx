@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { WorkingPlane } from './WorkingPlane';
 import { GeometryRenderer, CompletedObjectsRenderer } from './GeometryRenderer';
 import { FaceHighlightOverlay } from './FaceHighlightOverlay';
+import { RevolvePreviewRenderer } from './RevolvePreviewRenderer';
 import { PerformanceOverlay } from './PerformanceOverlay';
 import { useGestureInteraction } from '../hooks/useGestureInteraction';
 import { useZElongation } from '../hooks/useZElongation';
@@ -101,6 +102,9 @@ function Scene({ interactionRefBridge, controlsRef }) {
                 creation-time planePosition + planeRotation. They do NOT follow
                 the active working plane; only the camera/view changes. */}
             <CompletedObjectsRenderer />
+
+            {/* Real-time Revolve / Lathe 3D Translucent Preview */}
+            <RevolvePreviewRenderer />
 
             {/* Face selection highlight overlay — shows clickable face indicators
                 when a 3D solid is selected. Sits in world space (no plane transform). */}

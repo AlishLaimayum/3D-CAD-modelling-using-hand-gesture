@@ -13,23 +13,38 @@ import { useCadStore } from '../store/useCadStore';
 import { CursorRenderer } from './CursorRenderer';
 import { ActiveDrawingRenderer } from './ActiveDrawingRenderer';
 
-import { GEOMETRY_KIND, ExtrusionEngine, Profile2D } from '../cad/geometry/index.js';
+import { GEOMETRY_KIND, ExtrusionEngine, RevolveEngine, Profile2D } from '../cad/geometry/index.js';
 import { getFaceFromHit } from '../cad/geometry/FaceEnumerator.js';
 
 /**
  * Individual CAD Object Mesh
  * Renders Category 3: 3D Solid Geometry (watertight B-Rep), Category 2: 3D Surface, or Category 1: 2D Sketch
  */
-const CadObjectItem = memo(function CadObjectItem({ obj, isSelected, isHovered, onSelectSolidMesh }) {
+const CadObjectItem = memo(function CadObjectItem({ obj, isSelected, isHovered, isFaceSelected, onSelectSolidMesh }) {
     const baseColor = obj.color || 0x00e5ff;
-    const color = isSelected ? '#ff6600' : (isHovered ? '#ffaa00' : baseColor);
+    // When a face is selected, the solid body remains in standard CAD style while FaceHighlightOverlay highlights only that face
+    const isSolidSelected = isSelected && !isFaceSelected;
+    const color = isSolidSelected ? '#00e5ff' : (isHovered ? '#00f0ff' : baseColor);
     const height = Math.max(0, obj.extrudeHeight ?? ((obj.scaleZ !== undefined && obj.scaleZ > 0.05 && obj.scaleZ !== 1) ? obj.scaleZ : 0));
 
-    // Construct CAD SolidMesh — always re-extrude when height changes.
-    // Do NOT short-circuit on obj.solidMesh: internalUpdateObject mutates the same
-    // object reference (setExtrusionHeight), so React's memo would see no change
-    // and return stale geometry. height is in the dep array, so this invalidates correctly.
+    // Construct CAD SolidMesh for Extrusion or Revolve
     const solidMesh = useMemo(() => {
+        if (obj.operation === 'REVOLVE' || obj.revolveData) {
+            if (obj.solidMesh) return obj.solidMesh;
+            const rData = obj.revolveData || {};
+            const prof = obj.profile || new Profile2D({
+                points: obj.points || (obj.start && obj.end ? [obj.start, obj.end] : []),
+                type: obj.type || 'FREEHAND',
+                isClosed: !rData.isSurface
+            });
+            return RevolveEngine.revolve(
+                prof,
+                rData.axis || 'PROFILE_LEFT',
+                rData.angleDeg ?? 360,
+                rData.isSurface || false,
+                rData.reversed || false
+            );
+        }
         if (height <= 0.01) return null;
         const prof = obj.profile || new Profile2D({
             points: obj.points || (obj.start && obj.end ? [obj.start, obj.end] : []),
@@ -37,7 +52,7 @@ const CadObjectItem = memo(function CadObjectItem({ obj, isSelected, isHovered, 
             isClosed: obj.type === 'RECTANGLE' || obj.type === 'CIRCLE'
         });
         return ExtrusionEngine.extrude(prof, height);
-    }, [obj.profile, obj.points, obj.start, obj.end, obj.type, height]);
+    }, [obj.solidMesh, obj.operation, obj.revolveData, obj.profile, obj.points, obj.start, obj.end, obj.type, height]);
 
     // Tessellated Three.js renderable mesh buffer
     const solidGeometry = useMemo(() => {
@@ -82,7 +97,7 @@ const CadObjectItem = memo(function CadObjectItem({ obj, isSelected, isHovered, 
 
         return (
             <group>
-                {/* Real 3D Solid Mesh with verified topology & outward normals */}
+                {/* Real 3D Solid Mesh: translucent with depthWrite=false so other geometry is never obscured */}
                 <mesh
                     geometry={solidGeometry}
                     castShadow
@@ -95,38 +110,56 @@ const CadObjectItem = memo(function CadObjectItem({ obj, isSelected, isHovered, 
                     <meshStandardMaterial
                         color={color}
                         transparent
-                        opacity={isSelected ? 0.78 : (isHovered ? 0.75 : 0.65)}
-                        roughness={0.25}
-                        metalness={0.2}
-                        emissive={isSelected ? '#ff4400' : (isHovered ? '#ff9900' : '#000000')}
-                        emissiveIntensity={isSelected ? 0.35 : (isHovered ? 0.28 : 0)}
+                        opacity={isSolidSelected ? 0.45 : (isHovered ? 0.55 : 0.65)}
+                        roughness={0.2}
+                        metalness={0.15}
+                        emissive={isSolidSelected ? '#0088cc' : (isHovered ? '#005577' : '#000000')}
+                        emissiveIntensity={isSolidSelected ? 0.25 : (isHovered ? 0.18 : 0)}
                         side={THREE.DoubleSide}
+                        depthWrite={false}
                     />
                 </mesh>
 
                 {/* Crisp Glowing CAD Edge Lines for Feature & Boundary Edges */}
                 {edgeGeometry && (
                     <lineSegments geometry={edgeGeometry}>
-                        <lineBasicMaterial color={isSelected ? '#ffaa00' : (isHovered ? '#ffff00' : '#ffffff')} linewidth={2} />
+                        <lineBasicMaterial
+                            color={isSolidSelected ? '#ffaa00' : (isHovered ? '#ffff00' : '#ffffff')}
+                            linewidth={isSolidSelected ? 3 : 2}
+                        />
                     </lineSegments>
                 )}
 
                 {/* Base 2D Sketch Outline on Plane */}
                 {baseGeometry && (
                     <line geometry={baseGeometry}>
-                        <lineBasicMaterial color={isSelected ? '#ff8800' : (isHovered ? '#ffcc00' : '#00e5ff')} linewidth={2} />
+                        <lineBasicMaterial
+                            color={isSolidSelected ? '#ffaa00' : (isHovered ? '#ffcc00' : '#00e5ff')}
+                            linewidth={2}
+                        />
                     </line>
                 )}
 
-                {/* 3D Solid Dimensions & Volume HUD Badge */}
+                {/* 3D Solid Dimensions & Volume HUD Badge in Centimeters (cm) */}
                 <Text
-                    position={[bbox.max[0] + 0.35, height / 2, bbox.center[2]]}
-                    fontSize={0.26}
+                    position={[bbox.max[0] + 0.35, obj.operation === 'REVOLVE' ? bbox.center[1] : height / 2, bbox.center[2]]}
+                    fontSize={0.24}
                     color="#00ffff"
                     anchorX="left"
                     anchorY="middle"
                 >
-                    {`X:${dims.x.toFixed(1)} Y:${dims.y.toFixed(1)} Z:${dims.z.toFixed(1)} | V:${solidMesh.volume.toFixed(1)}`}
+                    {`X:${dims.x.toFixed(1)}cm Y:${dims.y.toFixed(1)}cm Z:${dims.z.toFixed(1)}cm | V:${solidMesh.volume.toFixed(1)}cm³`}
+                </Text>
+
+                {/* Operation Height / Revolve Angle */}
+                <Text
+                    position={[bbox.min[0] - 0.35, obj.operation === 'REVOLVE' ? bbox.center[1] : height / 2, bbox.center[2]]}
+                    fontSize={0.22}
+                    color="#00ff88"
+                    anchorX="right"
+                    anchorY="middle"
+                >
+                    {obj.operation === 'REVOLVE' ? `Rev: ${obj.revolveData?.angleDeg || 360}°` : `H: ${height.toFixed(2)} cm`}
                 </Text>
 
                 {/* Watertight Solid Status Tag */}
@@ -149,11 +182,60 @@ const CadObjectItem = memo(function CadObjectItem({ obj, isSelected, isHovered, 
     // CATEGORY 1: 2D FLAT PROFILE SKETCH (Default before Extrusion)
     // ---------------------------------------------------------
     if (baseGeometry) {
+        // Measurement text badge in centimeters for selected or hovered 2D sketch
+        let dimText = null;
+        let dimPos = [0, 0.25, 0];
+
+        if (isSelected || isHovered) {
+            if (obj.type === 'LINE' && (obj.points || (obj.start && obj.end))) {
+                const pts = obj.points || [obj.start, obj.end];
+                if (pts.length >= 2) {
+                    const s = pts[0];
+                    const e = pts[pts.length - 1];
+                    const len = Math.hypot(e[0] - s[0], e[1] - s[1], e[2] - s[2]);
+                    dimText = `L: ${len.toFixed(2)} cm`;
+                    dimPos = [(s[0] + e[0]) / 2, ((s[1] + e[1]) / 2) + 0.25, (s[2] + e[2]) / 2];
+                }
+            } else if (obj.type === 'RECTANGLE' && obj.points && obj.points.length >= 4) {
+                const p0 = obj.points[0], p1 = obj.points[1], p2 = obj.points[2], p3 = obj.points[3];
+                const w = Math.hypot(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+                const l = Math.hypot(p3[0] - p0[0], p3[1] - p0[1], p3[2] - p0[2]);
+                dimText = `W: ${w.toFixed(2)} cm × L: ${l.toFixed(2)} cm`;
+                dimPos = [(p0[0] + p2[0]) / 2, 0.25, (p0[2] + p2[2]) / 2];
+            } else if (obj.type === 'CIRCLE' && obj.points && obj.points.length >= 3) {
+                let cx = 0, cz = 0;
+                for (const p of obj.points) { cx += p[0]; cz += p[2]; }
+                cx /= obj.points.length; cz /= obj.points.length;
+                const r = Math.hypot(obj.points[0][0] - cx, 0, obj.points[0][2] - cz);
+                dimText = `r: ${r.toFixed(2)} cm (Ø ${(r * 2).toFixed(2)} cm)`;
+                dimPos = [cx, 0.25, cz];
+            } else if (obj.points && obj.points.length >= 2) {
+                let len = 0;
+                for (let i = 1; i < obj.points.length; i++) {
+                    len += Math.hypot(obj.points[i][0] - obj.points[i - 1][0], obj.points[i][1] - obj.points[i - 1][1], obj.points[i][2] - obj.points[i - 1][2]);
+                }
+                dimText = `L: ${len.toFixed(2)} cm`;
+                dimPos = [obj.points[0][0], 0.25, obj.points[0][2]];
+            }
+        }
+
         return (
             <group>
                 <line geometry={baseGeometry}>
                     <lineBasicMaterial color={color} linewidth={2} />
                 </line>
+
+                {dimText && (
+                    <Text
+                        position={dimPos}
+                        fontSize={0.22}
+                        color={isSelected ? '#ffea00' : '#00ffff'}
+                        anchorX="center"
+                        anchorY="bottom"
+                    >
+                        {dimText}
+                    </Text>
+                )}
             </group>
         );
     }
@@ -206,23 +288,56 @@ const SelectableHitMesh = memo(function SelectableHitMesh({ obj, onSelect }) {
 });
 
 export function CompletedObjectsRenderer() {
-    const cadObjects = useCadStore((state) => state.cadObjects);
+    const cadObjects       = useCadStore((state) => state.cadObjects);
+    const detectedProfiles = useCadStore((state) => state.detectedProfiles);
     const selectedObjectId = useCadStore((state) => state.selectedObjectId);
-    const hoveredObjectId = useCadStore((state) => state.hoveredObjectId);
-    const drawingMode = useCadStore((state) => state.drawingMode);
+    const hoveredObjectId  = useCadStore((state) => state.hoveredObjectId);
+    const drawingMode      = useCadStore((state) => state.drawingMode);
     const zHoldModeEnabled = useCadStore((state) => state.zHoldModeEnabled);
-    const selectObject = useCadStore((state) => state.selectObject);
-    const setSelectedFace = useCadStore((state) => state.setSelectedFace);
+    const selectObject     = useCadStore((state) => state.selectObject);
+    const selectedFace     = useCadStore((state) => state.selectedFace);
+    const setSelectedFace  = useCadStore((state) => state.setSelectedFace);
+
+    const revolveState     = useCadStore((state) => state.revolveState);
+    const setRevolveProfile = useCadStore((state) => state.setRevolveProfile);
+    const setRevolveAxis   = useCadStore((state) => state.setRevolveAxis);
+
+    const handleObjectClick = (objId) => {
+        if (revolveState?.active) {
+            const obj = cadObjects.find((o) => o.id === objId);
+            if (!obj) return;
+            if (revolveState.step === 'SELECT_AXIS' && obj.type === 'LINE') {
+                setRevolveAxis({
+                    type: 'LINE',
+                    lineId: obj.id,
+                    points: obj.points || [obj.start, obj.end]
+                });
+            } else {
+                // Resolve raw segment → owning SketchProfile
+                const ownerProfile = detectedProfiles.find(p => p.segmentIds.includes(objId));
+                setRevolveProfile(ownerProfile ? ownerProfile.id : objId);
+            }
+        } else {
+            selectObject(objId);
+        }
+    };
+
+    // Highlight all segments belonging to the selected SketchProfile
+    const selectedSketchProfile = revolveState?.active
+        ? detectedProfiles.find(p => p.id === revolveState.selectedProfileId)
+        : null;
 
     const handleSelectSolidMesh = (obj, e) => {
-        selectObject(obj.id);
-        if (obj.extrudeHeight > 0.01 && e.face?.normal) {
+        handleObjectClick(obj.id);
+        if (!revolveState?.active && obj.extrudeHeight > 0.01 && e.face?.normal) {
             const face = getFaceFromHit(obj, e.face.normal, e.point);
             if (face) {
                 setSelectedFace(face);
             }
         }
     };
+
+    const isHitMeshActive = drawingMode === 'SELECT' || zHoldModeEnabled || (revolveState && revolveState.active);
 
     return (
         <group>
@@ -231,18 +346,23 @@ export function CompletedObjectsRenderer() {
                 // plane transform to convert them to world space.
                 const pos = obj.planePosition || [0, 0, 0];
                 const rot = obj.planeRotation || [Math.PI / 2, 0, 0];
-                const isSelected = obj.id === selectedObjectId;
+                const inSelectedProfile = selectedSketchProfile?.segmentIds.includes(obj.id) ?? false;
+                const isSelected = obj.id === selectedObjectId
+                    || (revolveState?.active && revolveState.selectedProfileId === obj.id)
+                    || inSelectedProfile;
                 const isHovered = obj.id === hoveredObjectId;
+                const isFaceSelected = selectedFace && selectedFace.objectId === obj.id;
                 return (
                     <group key={obj.id || `cad-obj-${idx}`} position={pos} rotation={rot}>
                         <CadObjectItem
                             obj={obj}
                             isSelected={isSelected}
                             isHovered={isHovered}
+                            isFaceSelected={isFaceSelected}
                             onSelectSolidMesh={handleSelectSolidMesh}
                         />
-                        {(drawingMode === 'SELECT' || zHoldModeEnabled) && (
-                            <SelectableHitMesh obj={obj} onSelect={selectObject} />
+                        {isHitMeshActive && (
+                            <SelectableHitMesh obj={obj} onSelect={handleObjectClick} />
                         )}
                     </group>
                 );

@@ -32,6 +32,7 @@ import {
     Minus,
     Square,
     Circle,
+    Spline,
     Grid,
     CornerDownRight,
     Activity,
@@ -55,6 +56,7 @@ export function UIOverlay() {
     const activePreset     = useCadStore((s) => s.activePreset);
     const cadObjects       = useCadStore((s) => s.cadObjects);
     const drawingMode      = useCadStore((s) => s.drawingMode);
+    const curveStage       = useCadStore((s) => s.curveStage);
     const selectedObjectId = useCadStore((s) => s.selectedObjectId);
 
     const magneticLockEnabled = useCadStore((s) => s.magneticLockEnabled);
@@ -66,9 +68,15 @@ export function UIOverlay() {
     const canUndo           = useCadStore((s) => s.canUndo);
     const canRedo           = useCadStore((s) => s.canRedo);
     const diagnosticsEnabled = useCadStore((s) => s.diagnosticsEnabled);
+    const defaultExtrudeHeight = useCadStore((s) => s.defaultExtrudeHeight);
+    const setDefaultExtrudeHeight = useCadStore((s) => s.setDefaultExtrudeHeight);
     const zHoldModeEnabled   = useCadStore((s) => s.zHoldModeEnabled);
     const selectedFace       = useCadStore((s) => s.selectedFace);
     const clearSelectedFace  = useCadStore((s) => s.clearSelectedFace);
+
+    const revolveState       = useCadStore((s) => s.revolveState);
+    const startRevolveMode   = useCadStore((s) => s.startRevolveMode);
+    const cancelRevolveMode  = useCadStore((s) => s.cancelRevolveMode);
 
     // Actions
     const setDrawingMode          = useCadStore((s) => s.setDrawingMode);
@@ -109,12 +117,20 @@ export function UIOverlay() {
               else if (e.key === '2') { setDrawingMode('LINE'); }
               else if (e.key === '3') { setDrawingMode('RECTANGLE'); }
               else if (e.key === '4') { setDrawingMode('CIRCLE'); }
-              else if (e.key === 'Escape') { deselectObject(); clearSelectedFace(); }
+              else if (e.key === '5') { setDrawingMode('CURVE'); }
+              else if (e.key === 'Escape') {
+                  if (revolveState?.active) {
+                      cancelRevolveMode();
+                  } else {
+                      deselectObject();
+                      clearSelectedFace();
+                  }
+              }
               else if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelectedObject(); }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo, setDrawingMode, deselectObject, deleteSelectedObject, clearSelectedFace]);
+    }, [undo, redo, setDrawingMode, deselectObject, deleteSelectedObject, clearSelectedFace, revolveState, cancelRevolveMode]);
 
     // Handle JSON import
     const handleImportJSON = (e) => {
@@ -263,22 +279,81 @@ export function UIOverlay() {
                             open={sidebarOpen}
                             onClick={() => setDrawingMode('CIRCLE')}
                         />
+                        <SidebarBtn
+                            icon={<Spline size={15} />}
+                            label="Curve"
+                            shortcut="5"
+                            active={drawingMode === 'CURVE'}
+                            open={sidebarOpen}
+                            onClick={() => setDrawingMode('CURVE')}
+                            activeColor="#00f0ff"
+                        />
                     </SidebarSection>
 
                     <SidebarDivider />
 
                     {/* === SECTION: 3D OPERATIONS === */}
                     <SidebarSection label="3D Operations" open={sidebarOpen}>
+                        {sidebarOpen && (
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '4px 8px',
+                                background: 'rgba(0, 255, 102, 0.06)',
+                                border: '1px solid rgba(0, 255, 102, 0.2)',
+                                borderRadius: '6px',
+                                margin: '2px 0 4px',
+                                fontSize: '10px'
+                            }}>
+                                <span style={{ color: '#9bc6b8' }}>Extrude (cm):</span>
+                                <input
+                                    type="number"
+                                    step="0.5"
+                                    min="0.1"
+                                    value={defaultExtrudeHeight}
+                                    onChange={(e) => setDefaultExtrudeHeight(e.target.value)}
+                                    style={{
+                                        width: '52px',
+                                        background: 'rgba(10, 15, 25, 0.85)',
+                                        border: '1px solid rgba(0, 255, 102, 0.4)',
+                                        borderRadius: '4px',
+                                        color: '#00ff88',
+                                        fontSize: '11px',
+                                        fontFamily: 'monospace',
+                                        textAlign: 'center',
+                                        padding: '2px 4px',
+                                        fontWeight: 'bold'
+                                    }}
+                                />
+                            </div>
+                        )}
                         <SidebarBtn
                             icon={<Box size={15} />}
-                            label="Extrude Solid"
+                            label={`Extrude (${defaultExtrudeHeight}cm)`}
                             active={false}
                             open={sidebarOpen}
-                            onClick={() => extrudeObject(selectedObjectId, 1.5)}
+                            onClick={() => extrudeObject(selectedObjectId, defaultExtrudeHeight)}
                             disabled={!selectedObjectId}
                             activeColor="#00ff66"
                             accentColor="#00ff66"
-                            title="Extrude selected sketch into 3D solid"
+                            title={`Extrude selected sketch into 3D solid by ${defaultExtrudeHeight} cm`}
+                        />
+                        <SidebarBtn
+                            icon={<RotateCw size={15} />}
+                            label="Revolve 360°"
+                            active={revolveState?.active}
+                            open={sidebarOpen}
+                            onClick={() => {
+                                if (revolveState?.active) {
+                                    cancelRevolveMode();
+                                } else {
+                                    startRevolveMode(selectedObjectId);
+                                }
+                            }}
+                            activeColor="#00f0ff"
+                            accentColor="#00f0ff"
+                            title="Revolve 2D sketch profile around an axis to create a 3D solid model"
                         />
                         <SidebarBtn
                             icon={<ArrowUpDown size={15} />}
@@ -485,10 +560,28 @@ export function UIOverlay() {
                 <div style={{ color: '#00f0ff', fontWeight: '700', letterSpacing: '1px', marginBottom: '6px', fontSize: '11px' }}>
                     3D CAD STATUS
                 </div>
+                <div><span style={{ color: '#666' }}>Unit:</span> <span style={{ color: '#00ff88', fontWeight: '700' }}>CENTIMETERS (cm)</span></div>
                 <div><span style={{ color: '#666' }}>Plane:</span> <span style={{ color: '#00ffff', fontWeight: '700' }}>
-                    {activePreset}{activePreset === 'XY' && planePosition[2] !== 0 ? ` Z=${planePosition[2] > 0 ? '+' : ''}${planePosition[2]}` : ''}
+                    {activePreset}{activePreset === 'XY' && planePosition[2] !== 0 ? ` Z=${planePosition[2] > 0 ? '+' : ''}${planePosition[2]} cm` : ''}
                 </span></div>
                 <div><span style={{ color: '#666' }}>Tool:</span> <span style={{ color: '#ffea00', fontWeight: '700' }}>{drawingMode}</span></div>
+                {drawingMode === 'CURVE' && (
+                    <div style={{
+                        marginTop: '4px',
+                        padding: '4px 8px',
+                        background: 'rgba(0, 240, 255, 0.12)',
+                        border: '1px solid rgba(0, 240, 255, 0.35)',
+                        borderRadius: '6px',
+                        fontSize: '10px'
+                    }}>
+                        <div style={{ color: '#00f0ff', fontWeight: '700' }}>
+                            {curveStage === 'WAITING_FOR_START' && '① Pinch to set Start Point'}
+                            {curveStage === 'WAITING_FOR_END' && '② Pinch to set End Point'}
+                            {curveStage === 'SHAPING_CURVE' && '③ Move hand to shape, pinch to finalize'}
+                            {curveStage === 'FINALIZE' && '✓ Finalizing Curve'}
+                        </div>
+                    </div>
+                )}
                 <div><span style={{ color: '#666' }}>Lock:</span> <span style={{ color: planeLocked ? '#ff4455' : '#00ff66', fontWeight: '700' }}>{planeLocked ? 'LOCKED' : 'FREE'}</span></div>
                 <div><span style={{ color: '#666' }}>Snap:</span> <span style={{ color: isSnapped ? '#00ff66' : '#555', fontWeight: '700' }}>{isSnapped ? '🧲 SNAPPED' : magneticLockEnabled ? 'Active' : 'Off'}</span></div>
                 {zHoldModeEnabled && (

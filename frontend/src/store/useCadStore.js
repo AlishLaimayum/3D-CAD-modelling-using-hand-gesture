@@ -24,9 +24,18 @@ import {
     GEOMETRY_KIND, 
     Profile2D, 
     ExtrusionEngine, 
-    SolidMesh 
+    RevolveEngine,
+    SolidMesh,
+    ProfileDetector
 } from '../cad/geometry/index.js';
 import { faceToEuler } from '../cad/geometry/FaceEnumerator.js';
+import { 
+    resizeLineInCm, 
+    resizeRectangleInCm, 
+    resizeCircleInCm, 
+    resizeFreehandInCm 
+} from '../utils/dimensionUtils.js';
+import { computeRotatedObjectTransform } from '../utils/transformUtils.js';
 
 export const useCadStore = create((set, get) => {
     // Synchronize CommandManager stack availability with store
@@ -36,12 +45,37 @@ export const useCadStore = create((set, get) => {
 
     return {
         // ---------------------------------------------
+        // UNITS & STANDARDS (CENTIMETERS)
+        // ---------------------------------------------
+        unit: 'cm',
+        unitScale: 1.0, // 1 Three.js world unit = 1.0 cm
+        defaultExtrudeHeight: 2.0, // 2.0 cm default
+        setDefaultExtrudeHeight: (h) => set({ defaultExtrudeHeight: Math.max(0.1, Number(h)) }),
+
+        // ---------------------------------------------
         // PERSISTENT CAD OBJECTS & SELECTION
         // ---------------------------------------------
         cadObjects: [],
         selectedObjectId: null,
         hoveredObjectId: null,
-        drawingMode: 'SELECT', // 'SELECT' | 'FREEHAND' | 'LINE' | 'RECTANGLE' | 'CIRCLE'
+        drawingMode: 'SELECT', // 'SELECT' | 'FREEHAND' | 'LINE' | 'RECTANGLE' | 'CIRCLE' | 'CURVE'
+        curveStage: 'WAITING_FOR_START', // 'WAITING_FOR_START' | 'WAITING_FOR_END' | 'SHAPING_CURVE' | 'FINALIZE'
+
+        // CAD Revolve (Lathe) Modeling Workflow State
+        revolveState: {
+            active: false,
+            step: 'SELECT_PROFILE', // 'SELECT_PROFILE' | 'SELECT_AXIS' | 'ADJUST_SETTINGS'
+            selectedProfileId: null,
+            selectedAxis: 'PROFILE_LEFT', // preset string or { a0, p0, p1, dir, label }
+            angleDeg: 360,
+            isSurface: false,
+            reversed: false,
+            previewEnabled: true,
+            errorMessage: null
+        },
+
+        // Auto-detected logical sketch profiles (computed by ProfileDetector)
+        detectedProfiles: [],
 
         // Face / Surface selection — null when no face is selected
         // Shape: { objectId, faceLabel, normal: [x,y,z], position: [x,y,z], tangent: [x,y,z], bitangent: [x,y,z] }
@@ -97,7 +131,10 @@ export const useCadStore = create((set, get) => {
 
         setDrawingMode: (mode) => {
             if (get().drawingMode !== mode) {
-                const updates = { drawingMode: mode };
+                const updates = { 
+                    drawingMode: mode,
+                    curveStage: 'WAITING_FOR_START'
+                };
                 // Clear object selection when switching to a drawing tool UNLESS a face is selected
                 if (mode !== 'SELECT' && !get().selectedFace) {
                     updates.selectedObjectId = null;
@@ -105,6 +142,8 @@ export const useCadStore = create((set, get) => {
                 set(updates);
             }
         },
+
+        setCurveStage: (stage) => set({ curveStage: stage }),
 
         selectObject: (id) => {
             if (get().selectedObjectId !== id) {
@@ -201,14 +240,25 @@ export const useCadStore = create((set, get) => {
         setPlaneRotation: (rotation) => set({ planeRotation: rotation }),
         setPlanePosition: (position) => set({ planePosition: position }),
 
-        // Called ONLY by gesture rotation. Updates the working plane AND syncs every
-        // existing object's frozen planeRotation so geometry rigidly follows the plane.
-        // XY/YZ/XZ preset switches must NOT call this — they use setPlaneRotation so
-        // completed objects stay at their original world positions.
-        gestureRotatePlane: (rotation) => set((state) => ({
-            planeRotation: rotation,
-            cadObjects: state.cadObjects.map((o) => ({ ...o, planeRotation: rotation }))
-        })),
+        // Updates the active working plane ONLY. Existing CAD objects maintain
+        // their own invariant world positions and orientations.
+        gestureRotatePlane: (rotation) => set({ planeRotation: rotation }),
+
+        /**
+         * Deliberate Model/Object Rotation around its center pivot point.
+         * Affects ONLY the specified/selected CAD object.
+         */
+        rotateCADObject: (objectId, deltaRotation, customPivot = null) => {
+            const id = objectId || get().selectedObjectId;
+            if (!id) return;
+            const obj = get().cadObjects.find((o) => o.id === id);
+            if (!obj) return;
+
+            const transform = computeRotatedObjectTransform(obj, deltaRotation, customPivot);
+            if (transform) {
+                get().updateCADObject(id, transform);
+            }
+        },
 
         toggleZHoldMode: () => set((state) => {
             const next = !state.zHoldModeEnabled;
@@ -441,25 +491,40 @@ export const useCadStore = create((set, get) => {
                 if (o.id !== id) return o;
                 const updated = { ...o, ...props };
 
-                if (props.extrudeHeight !== undefined) {
-                    const h = Math.max(0, props.extrudeHeight);
-                    if (h > 0.01) {
-                        if (updated.solidMesh && typeof updated.solidMesh.setExtrusionHeight === 'function') {
-                            updated.solidMesh.setExtrusionHeight(h);
-                            updated.kind = updated.solidMesh.kind;
-                        } else {
-                            const prof = updated.profile || new Profile2D({
-                                points: updated.points || [updated.start, updated.end],
-                                type: updated.type,
-                                isClosed: updated.type === 'RECTANGLE' || updated.type === 'CIRCLE'
-                            });
-                            updated.profile = prof;
-                            updated.solidMesh = ExtrusionEngine.extrude(prof, h);
-                            updated.kind = updated.solidMesh.kind;
-                        }
+                // Rebuild Profile2D if points were updated without a profile
+                if (props.points && !props.profile) {
+                    updated.profile = new Profile2D({
+                        points: props.points,
+                        type: updated.type,
+                        isClosed: updated.type === 'RECTANGLE' || updated.type === 'CIRCLE'
+                    });
+                }
+
+                // If extrudeHeight or points changed, ensure 3D solid mesh is updated accurately
+                const heightSpecified = props.extrudeHeight !== undefined;
+                const pointsChanged = props.points !== undefined;
+                const currentHeight = heightSpecified ? Math.max(0, props.extrudeHeight) : (updated.extrudeHeight || 0);
+
+                if (updated.operation === 'REVOLVE' || updated.revolveData) {
+                    const rData = updated.revolveData || {};
+                    const prof = updated.profile || new Profile2D(updated);
+                    updated.solidMesh = RevolveEngine.revolve(prof, rData.axis, rData.angleDeg, rData.isSurface, rData.reversed);
+                    updated.kind = rData.isSurface ? GEOMETRY_KIND.SURFACE_3D : GEOMETRY_KIND.SOLID_3D;
+                } else if (heightSpecified || (pointsChanged && currentHeight > 0.01)) {
+                    if (currentHeight > 0.01) {
+                        const prof = updated.profile || new Profile2D({
+                            points: updated.points || [updated.start, updated.end],
+                            type: updated.type,
+                            isClosed: updated.type === 'RECTANGLE' || updated.type === 'CIRCLE'
+                        });
+                        updated.profile = prof;
+                        updated.extrudeHeight = currentHeight;
+                        updated.solidMesh = ExtrusionEngine.extrude(prof, currentHeight);
+                        updated.kind = updated.solidMesh ? updated.solidMesh.kind : GEOMETRY_KIND.SOLID_3D;
                     } else {
                         updated.kind = GEOMETRY_KIND.SKETCH_2D;
                         updated.solidMesh = null;
+                        updated.extrudeHeight = 0;
                     }
                 }
                 return updated;
@@ -470,17 +535,277 @@ export const useCadStore = create((set, get) => {
          * Extrude a 2D profile or existing object into a 3D solid model.
          * Primary CAD operation: Sketch -> Profile -> Solid
          */
-        extrudeObject: (objectId, height = 1.0) => {
+        extrudeObject: (objectId, height = null) => {
             const id = objectId || get().selectedObjectId;
             if (!id) return;
             const current = get().cadObjects.find((o) => o.id === id);
             if (!current) return;
 
-            const targetHeight = (typeof height === 'number' && height > 0) ? height : 1.5;
+            const targetHeight = (typeof height === 'number' && height > 0)
+                ? height
+                : (get().defaultExtrudeHeight || 2.0);
             get().updateCADObject(id, {
                 extrudeHeight: targetHeight,
                 scaleZ: targetHeight
             });
+        },
+
+        // ---------------------------------------------
+        // CAD REVOLVE (LATHE) OPERATIONS
+        // ---------------------------------------------
+
+        /**
+         * Re-run ProfileDetector on current cadObjects and store results.
+         * Call this whenever objects change or revolve mode is opened.
+         */
+        detectProfiles: () => set((state) => ({
+            detectedProfiles: ProfileDetector.detect(state.cadObjects)
+        })),
+
+        startRevolveMode: (initialProfileId = null) => set((state) => {
+            const freshProfiles = ProfileDetector.detect(state.cadObjects);
+
+            // Resolve raw segment id → owning SketchProfile id
+            const rawId = initialProfileId || state.selectedObjectId;
+            let resolvedProfileId = null;
+            if (rawId) {
+                const direct = freshProfiles.find(p => p.id === rawId);
+                const owner  = direct ?? freshProfiles.find(p => p.segmentIds.includes(rawId));
+                if (owner) resolvedProfileId = owner.id;
+            }
+
+            const hasProf = !!resolvedProfileId;
+            return {
+                detectedProfiles: freshProfiles,
+                revolveState: {
+                    active: true,
+                    step: hasProf ? 'SELECT_AXIS' : 'SELECT_PROFILE',
+                    selectedProfileId: hasProf ? resolvedProfileId : null,
+                    selectedAxis: 'PROFILE_LEFT',
+                    angleDeg: 360,
+                    isSurface: false,
+                    reversed: false,
+                    previewEnabled: true,
+                    errorMessage: null
+                }
+            };
+        }),
+
+        cancelRevolveMode: () => set({
+            revolveState: {
+                active: false,
+                step: 'SELECT_PROFILE',
+                selectedProfileId: null,
+                selectedAxis: 'PROFILE_LEFT',
+                angleDeg: 360,
+                isSurface: false,
+                reversed: false,
+                previewEnabled: true,
+                errorMessage: null
+            }
+        }),
+
+        setRevolveProfile: (profileId) => set((state) => {
+            // profileId may be a SketchProfile id or a raw segment id
+            const sketchProf = state.detectedProfiles.find(p => p.id === profileId)
+                ?? state.detectedProfiles.find(p => p.segmentIds.includes(profileId));
+
+            if (sketchProf) {
+                // Build a temporary Profile2D from merged points for validation
+                const tempProf = new Profile2D({
+                    points: sketchProf.points,
+                    type: 'FREEHAND',
+                    isClosed: sketchProf.isClosed
+                });
+                const val = RevolveEngine.validateProfileForRevolve(tempProf, state.revolveState.selectedAxis, state.revolveState.isSurface);
+                return {
+                    revolveState: {
+                        ...state.revolveState,
+                        selectedProfileId: sketchProf.id,
+                        step: 'SELECT_AXIS',
+                        errorMessage: val.valid ? null : val.error
+                    }
+                };
+            }
+
+            // Fallback: raw CAD object
+            const obj = state.cadObjects.find((o) => o.id === profileId);
+            if (!obj) return state;
+            const val = RevolveEngine.validateProfileForRevolve(obj.profile || obj, state.revolveState.selectedAxis, state.revolveState.isSurface);
+            return {
+                selectedObjectId: profileId,
+                revolveState: {
+                    ...state.revolveState,
+                    selectedProfileId: profileId,
+                    step: 'SELECT_AXIS',
+                    errorMessage: val.valid ? null : val.error
+                }
+            };
+        }),
+
+        setRevolveAxis: (axis) => set((state) => {
+            const profObj = state.cadObjects.find((o) => o.id === state.revolveState.selectedProfileId);
+            let errMsg = null;
+            if (profObj) {
+                const val = RevolveEngine.validateProfileForRevolve(profObj.profile || profObj, axis, state.revolveState.isSurface);
+                if (!val.valid) errMsg = val.error;
+            }
+            return {
+                revolveState: {
+                    ...state.revolveState,
+                    selectedAxis: axis,
+                    step: 'ADJUST_SETTINGS',
+                    errorMessage: errMsg
+                }
+            };
+        }),
+
+        setRevolveAngle: (angle) => set((state) => ({
+            revolveState: {
+                ...state.revolveState,
+                angleDeg: Math.max(1, Math.min(360, Number(angle) || 360))
+            }
+        })),
+
+        setRevolveSurface: (isSurface) => set((state) => ({
+            revolveState: {
+                ...state.revolveState,
+                isSurface: !!isSurface,
+                errorMessage: null
+            }
+        })),
+
+        toggleRevolveDirection: () => set((state) => ({
+            revolveState: {
+                ...state.revolveState,
+                reversed: !state.revolveState.reversed
+            }
+        })),
+
+        toggleRevolvePreview: () => set((state) => ({
+            revolveState: {
+                ...state.revolveState,
+                previewEnabled: !state.revolveState.previewEnabled
+            }
+        })),
+
+        commitRevolve: () => {
+            const state = get();
+            const { selectedProfileId, selectedAxis, angleDeg, isSurface, reversed } = state.revolveState;
+            if (!selectedProfileId) {
+                set((s) => ({ revolveState: { ...s.revolveState, errorMessage: 'Please select a profile first.' } }));
+                return;
+            }
+
+            // ── Resolve the profile: SketchProfile (merged) or raw CAD object ──
+            const sketchProf = state.detectedProfiles.find(p => p.id === selectedProfileId);
+
+            let mergedProfile, sourcePoints, sourcePlanePos, sourcePlaneRot;
+
+            if (sketchProf) {
+                mergedProfile = new Profile2D({
+                    points:   sketchProf.points,
+                    type:     'FREEHAND',
+                    isClosed: sketchProf.isClosed
+                });
+                sourcePoints    = sketchProf.points;
+                sourcePlanePos  = sketchProf.planePosition ?? [...state.planePosition];
+                sourcePlaneRot  = sketchProf.planeRotation ?? [...state.planeRotation];
+            } else {
+                const profileObj = state.cadObjects.find((o) => o.id === selectedProfileId);
+                if (!profileObj) {
+                    set((s) => ({ revolveState: { ...s.revolveState, errorMessage: 'Selected profile not found.' } }));
+                    return;
+                }
+                mergedProfile   = profileObj.profile || new Profile2D(profileObj);
+                sourcePoints    = profileObj.points || (profileObj.start && profileObj.end ? [profileObj.start, profileObj.end] : []);
+                sourcePlanePos  = profileObj.planePosition ? [...profileObj.planePosition] : [...state.planePosition];
+                sourcePlaneRot  = profileObj.planeRotation ? [...profileObj.planeRotation] : [...state.planeRotation];
+            }
+
+            const val = RevolveEngine.validateProfileForRevolve(mergedProfile, selectedAxis, isSurface);
+            if (!val.valid) {
+                set((s) => ({ revolveState: { ...s.revolveState, errorMessage: val.error } }));
+                return;
+            }
+
+            const solidMesh = RevolveEngine.revolve(mergedProfile, selectedAxis, angleDeg, isSurface, reversed);
+            if (!solidMesh) {
+                set((s) => ({ revolveState: { ...s.revolveState, errorMessage: 'Failed to generate revolve solid.' } }));
+                return;
+            }
+
+            const newObj = {
+                id: `cad_revolve_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+                type: isSurface ? 'REVOLVE_SURFACE' : 'REVOLVE_SOLID',
+                kind: isSurface ? GEOMETRY_KIND.SURFACE_3D : GEOMETRY_KIND.SOLID_3D,
+                operation: 'REVOLVE',
+                profile: mergedProfile,
+                points: sourcePoints,
+                solidMesh: solidMesh,
+                extrudeHeight: 0,
+                revolveData: {
+                    sketchProfileId: sketchProf?.id ?? null,
+                    segmentIds: sketchProf?.segmentIds ?? [selectedProfileId],
+                    axis: selectedAxis,
+                    angleDeg: angleDeg,
+                    isSurface: isSurface,
+                    reversed: reversed
+                },
+                isClosed: !isSurface,
+                planePosition: sourcePlanePos,
+                planeRotation: sourcePlaneRot,
+                createdAt: Date.now()
+            };
+
+            state.addCADObject(newObj);
+            state.cancelRevolveMode();
+            state.selectObject(newObj.id);
+        },
+
+        /**
+         * Manually change length and dimensions in centimeters (cm) with full undo/redo support.
+         * Supports:
+         * - Line: lengthCm
+         * - Rectangle: widthCm, lengthCm
+         * - Circle: radiusCm, diameterCm
+         * - Freehand: lengthCm (perimeter/scale)
+         * - Extruded Solid: extrudeHeight (cm)
+         */
+        updateObjectDimensions: (objectId, changes = {}) => {
+            const id = objectId || get().selectedObjectId;
+            if (!id) return;
+            const obj = get().cadObjects.find((o) => o.id === id);
+            if (!obj) return;
+
+            let updates = {};
+
+            // Handle Extrusion height in cm
+            if (changes.extrudeHeight !== undefined) {
+                const h = Math.max(0, Number(changes.extrudeHeight));
+                updates.extrudeHeight = h;
+                updates.scaleZ = h;
+            }
+
+            // Handle 2D base sketch dimension adjustments in cm
+            if (obj.type === 'LINE' && changes.lengthCm !== undefined) {
+                const lineUpdates = resizeLineInCm(obj, changes.lengthCm);
+                if (lineUpdates) Object.assign(updates, lineUpdates);
+            } else if (obj.type === 'RECTANGLE' && (changes.widthCm !== undefined || changes.lengthCm !== undefined)) {
+                const rectUpdates = resizeRectangleInCm(obj, { widthCm: changes.widthCm, lengthCm: changes.lengthCm });
+                if (rectUpdates) Object.assign(updates, rectUpdates);
+            } else if (obj.type === 'CIRCLE' && (changes.radiusCm !== undefined || changes.diameterCm !== undefined)) {
+                const r = changes.radiusCm !== undefined ? Number(changes.radiusCm) : (Number(changes.diameterCm) / 2);
+                const circleUpdates = resizeCircleInCm(obj, r);
+                if (circleUpdates) Object.assign(updates, circleUpdates);
+            } else if (changes.lengthCm !== undefined && obj.type !== 'LINE' && obj.type !== 'RECTANGLE') {
+                const freehandUpdates = resizeFreehandInCm(obj, changes.lengthCm);
+                if (freehandUpdates) Object.assign(updates, freehandUpdates);
+            }
+
+            if (Object.keys(updates).length > 0) {
+                get().updateCADObject(id, updates);
+            }
         },
 
         /**

@@ -26,19 +26,7 @@ import { GestureStateMachine, GestureStates } from '../utils/gestureStateMachine
 import { SnappingEngine } from '../utils/snappingEngine';
 import { recognizeShape } from '../utils/shapeRecognizer';
 import { Profile2D, GEOMETRY_KIND } from '../cad/geometry/index.js';
-
-/**
- * Convert a face's world-space normal + tangent into a THREE.Euler that can
- * be stored as planeRotation on a new CAD object.
- * PlaneManager uses Euler to orient its local Y axis to the normal,
- * so we rotate from [0,1,0] to the face normal.
- */
-function facePlaneToEuler(normalArr, tangentArr) {
-    const n = new THREE.Vector3(...normalArr).normalize();
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
-    const euler = new THREE.Euler().setFromQuaternion(q, 'XYZ');
-    return [euler.x, euler.y, euler.z];
-}
+import { faceToEuler } from '../cad/geometry/FaceEnumerator.js';
 
 
 
@@ -135,9 +123,31 @@ export function useGestureInteraction(zElongation, controlsRef) {
     const setPlaneLocked = useCadStore((state) => state.setPlaneLocked);
     const setPlaneRotation = useCadStore((state) => state.setPlaneRotation);
     const gestureRotatePlane = useCadStore((state) => state.gestureRotatePlane);
+    const rotateCADObject = useCadStore((state) => state.rotateCADObject);
+    const selectedObjectId = useCadStore((state) => state.selectedObjectId);
     const setSnappedInfo = useCadStore((state) => state.setSnappedInfo);
     const addCADObject = useCadStore((state) => state.addCADObject);
     const selectedFace = useCadStore((state) => state.selectedFace);
+    const setCurveStage = useCadStore((state) => state.setCurveStage);
+
+    const revolveState = useCadStore((state) => state.revolveState);
+    const setRevolveProfile = useCadStore((state) => state.setRevolveProfile);
+    const setRevolveAxis = useCadStore((state) => state.setRevolveAxis);
+    const revolveStateRef = useRef(revolveState);
+    revolveStateRef.current = revolveState;
+
+    // Dedicated state machine tracking for CURVE tool
+    const curveStageRef = useRef('WAITING_FOR_START');
+    const curveP0Ref = useRef(null);
+    const curveP3Ref = useRef(null);
+    const curveP1Ref = useRef(null);
+    const curveP2Ref = useRef(null);
+    const curveHandleRef = useRef(null);
+    const pinchAwaitingReleaseRef = useRef(false);
+    const prevPinchStateRef = useRef(false);
+
+    const selectedObjectIdRef = useRef(selectedObjectId);
+    selectedObjectIdRef.current = selectedObjectId;
 
     // Keep active store values synced in refs for zero-overhead callback access
     const cadObjectsRef = useRef(cadObjects);
@@ -455,13 +465,271 @@ export function useGestureInteraction(zElongation, controlsRef) {
             extrudeHeight: 0,
             isClosed: finalType === 'RECTANGLE' || finalType === 'CIRCLE',
             planePosition: face ? [...face.position] : [...planeManager.getPosition()],
-            planeRotation: face ? facePlaneToEuler(face.normal, face.tangent) : [...planeManager.getRotation()],
+            planeRotation: face ? faceToEuler(face) : [...planeManager.getRotation()],
             createdAt: Date.now()
         };
 
         addCADObject(newCADObject);
         drawingPointsRef.current = [];
     }, [addCADObject, computeRectangleCorners, computeCirclePoints, clearShapeHoldTimer, drawingSmoother, planeManager]);
+
+    // ---------------------------------------------
+    // CURVE DRAWING TOOL: CUBIC BEZIER COMPUTATION
+    // Fixed endpoints P0 and P3; hand position H controls bend.
+    // Derived such that midpoint C(0.5) passes directly through H:
+    // P1 = A + 4/3(H - M), P2 = B + 4/3(H - M)
+    // ---------------------------------------------
+    const computeCubicBezierPoints = useCallback((p0, p3, handPos) => {
+        if (!p0 || !p3 || !handPos) return null;
+
+        // Chord midpoint M
+        const mx = (p0[0] + p3[0]) / 2;
+        const my = (p0[1] + p3[1]) / 2;
+        const mz = (p0[2] + p3[2]) / 2;
+
+        // Chord third points: A = P0 + 1/3 (P3 - P0), B = P0 + 2/3 (P3 - P0)
+        const ax = p0[0] + (p3[0] - p0[0]) / 3;
+        const ay = p0[1] + (p3[1] - p0[1]) / 3;
+        const az = p0[2] + (p3[2] - p0[2]) / 3;
+
+        const bx = p0[0] + (p3[0] - p0[0]) * (2 / 3);
+        const by = p0[1] + (p3[1] - p0[1]) * (2 / 3);
+        const bz = p0[2] + (p3[2] - p0[2]) * (2 / 3);
+
+        // Displacement from chord
+        const dx = handPos[0] - mx;
+        const dy = handPos[1] - my;
+        const dz = handPos[2] - mz;
+
+        // Control points
+        const p1 = [ax + (4 / 3) * dx, ay + (4 / 3) * dy, az + (4 / 3) * dz];
+        const p2 = [bx + (4 / 3) * dx, by + (4 / 3) * dy, bz + (4 / 3) * dz];
+
+        const curve = new THREE.CubicBezierCurve3(
+            new THREE.Vector3(p0[0], p0[1], p0[2]),
+            new THREE.Vector3(p1[0], p1[1], p1[2]),
+            new THREE.Vector3(p2[0], p2[1], p2[2]),
+            new THREE.Vector3(p3[0], p3[1], p3[2])
+        );
+
+        const sampled = curve.getPoints(50).map((v) => [v.x, v.y, v.z]);
+        return { p1, p2, sampled };
+    }, []);
+
+    const finalizeCurve = useCallback((sampledPoints, controlPoints) => {
+        if (!sampledPoints || sampledPoints.length < 2) return;
+
+        const profile = new Profile2D({
+            points: sampledPoints,
+            type: 'CURVE',
+            isClosed: false
+        });
+
+        const face = selectedFaceRef.current;
+        const newCADObject = {
+            id: `cad_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+            type: 'CURVE',
+            kind: GEOMETRY_KIND.SKETCH_2D,
+            points: sampledPoints,
+            start: sampledPoints[0],
+            end: sampledPoints[sampledPoints.length - 1],
+            controlPoints: controlPoints,
+            profile: profile,
+            solidMesh: null,
+            extrudeHeight: 0,
+            isClosed: false,
+            planePosition: face ? [...face.position] : [...planeManager.getPosition()],
+            planeRotation: face ? faceToEuler(face) : [...planeManager.getRotation()],
+            createdAt: Date.now()
+        };
+
+        addCADObject(newCADObject);
+
+        // Reset to WAITING_FOR_START for seamless next curve
+        curveStageRef.current = 'WAITING_FOR_START';
+        curveP0Ref.current = null;
+        curveP3Ref.current = null;
+        curveP1Ref.current = null;
+        curveP2Ref.current = null;
+        curveHandleRef.current = null;
+        setCurveStage('WAITING_FOR_START');
+
+        activeDrawingRef.current = {
+            active: false,
+            type: 'CURVE',
+            curveStage: 'WAITING_FOR_START',
+            p0: null,
+            p3: null,
+            p1: null,
+            p2: null,
+            handle: null,
+            previewPoints: null
+        };
+        drawingPointsRef.current = [];
+    }, [addCADObject, planeManager, setCurveStage]);
+
+    const resetCurveState = useCallback(() => {
+        curveStageRef.current = 'WAITING_FOR_START';
+        curveP0Ref.current = null;
+        curveP3Ref.current = null;
+        curveP1Ref.current = null;
+        curveP2Ref.current = null;
+        curveHandleRef.current = null;
+        pinchAwaitingReleaseRef.current = false;
+        prevPinchStateRef.current = false;
+        setCurveStage('WAITING_FOR_START');
+
+        if (activeDrawingRef.current.type === 'CURVE') {
+            activeDrawingRef.current = {
+                active: false,
+                type: 'CURVE',
+                curveStage: 'WAITING_FOR_START',
+                p0: null,
+                p3: null,
+                p1: null,
+                p2: null,
+                handle: null,
+                previewPoints: null
+            };
+            drawingPointsRef.current = [];
+        }
+    }, [setCurveStage]);
+
+    // Reset curve state on tool switch
+    useEffect(() => {
+        resetCurveState();
+    }, [drawingMode, resetCurveState]);
+
+    // Handle Escape key cancellation
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                resetCurveState();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [resetCurveState]);
+
+    /**
+     * Exact 4-State Interaction Sequence for Gesture & Pointer:
+     * State 1: WAITING_FOR_START (Pinch 1 sets P0)
+     * State 2: WAITING_FOR_END (Pinch 2 sets P3)
+     * State 3: SHAPING_CURVE (Hand moves to bend curve; endpoints remain fixed)
+     * State 4: FINALIZE (Pinch 3 commits persistent curve)
+     */
+    const handleCurveStep = useCallback((isPinching, currentPos) => {
+        if (!currentPos) return;
+
+        const isPinchDown = isPinching && !prevPinchStateRef.current;
+        const isPinchUp = !isPinching && prevPinchStateRef.current;
+        prevPinchStateRef.current = isPinching;
+
+        if (isPinchUp) {
+            // Require pinch release before accepting next stage
+            pinchAwaitingReleaseRef.current = false;
+        }
+
+        const stage = curveStageRef.current;
+
+        if (stage === 'WAITING_FOR_START') {
+            if (isPinchDown && !pinchAwaitingReleaseRef.current) {
+                // State 1 -> State 2: Save start point P0
+                curveP0Ref.current = [...currentPos];
+                curveStageRef.current = 'WAITING_FOR_END';
+                pinchAwaitingReleaseRef.current = true;
+                setCurveStage('WAITING_FOR_END');
+
+                activeDrawingRef.current = {
+                    active: true,
+                    type: 'CURVE',
+                    curveStage: 'WAITING_FOR_END',
+                    p0: [...currentPos],
+                    p3: null,
+                    p1: null,
+                    p2: null,
+                    handle: null,
+                    previewPoints: null
+                };
+                drawingPointsRef.current = [[...currentPos]];
+            }
+        } else if (stage === 'WAITING_FOR_END') {
+            const p0 = curveP0Ref.current;
+            if (!p0) return;
+
+            // Track hand cursor, show line from start point to current cursor
+            drawingPointsRef.current = [p0, currentPos];
+
+            if (isPinchDown && !pinchAwaitingReleaseRef.current) {
+                const dist = Math.hypot(currentPos[0] - p0[0], currentPos[1] - p0[1], currentPos[2] - p0[2]);
+                if (dist > 0.05) {
+                    // State 2 -> State 3: Save endpoint P3
+                    curveP3Ref.current = [...currentPos];
+                    curveStageRef.current = 'SHAPING_CURVE';
+                    pinchAwaitingReleaseRef.current = true;
+                    setCurveStage('SHAPING_CURVE');
+
+                    const mid = [
+                        (p0[0] + currentPos[0]) / 2,
+                        0,
+                        (p0[2] + currentPos[2]) / 2
+                    ];
+                    const res = computeCubicBezierPoints(p0, currentPos, mid);
+                    if (res) {
+                        curveP1Ref.current = res.p1;
+                        curveP2Ref.current = res.p2;
+                        curveHandleRef.current = mid;
+
+                        activeDrawingRef.current = {
+                            active: true,
+                            type: 'CURVE',
+                            curveStage: 'SHAPING_CURVE',
+                            p0: p0,
+                            p3: [...currentPos],
+                            p1: res.p1,
+                            p2: res.p2,
+                            handle: mid,
+                            previewPoints: res.sampled
+                        };
+                    }
+                }
+            }
+        } else if (stage === 'SHAPING_CURVE') {
+            const p0 = curveP0Ref.current;
+            const p3 = curveP3Ref.current;
+            if (!p0 || !p3) return;
+
+            // Moving hand shapes curve continuously; endpoints remain fixed
+            // Project control position onto active work plane (y = 0 in local space)
+            const handPos = [currentPos[0], 0, currentPos[2]];
+            curveHandleRef.current = handPos;
+
+            const res = computeCubicBezierPoints(p0, p3, handPos);
+            if (res) {
+                curveP1Ref.current = res.p1;
+                curveP2Ref.current = res.p2;
+
+                activeDrawingRef.current = {
+                    active: true,
+                    type: 'CURVE',
+                    curveStage: 'SHAPING_CURVE',
+                    p0: p0,
+                    p3: p3,
+                    p1: res.p1,
+                    p2: res.p2,
+                    handle: handPos,
+                    previewPoints: res.sampled
+                };
+
+                if (isPinchDown && !pinchAwaitingReleaseRef.current) {
+                    // State 3 -> State 4: FINALIZE
+                    pinchAwaitingReleaseRef.current = true;
+                    setCurveStage('FINALIZE');
+                    finalizeCurve(res.sampled, [p0, res.p1, res.p2, p3]);
+                }
+            }
+        }
+    }, [computeCubicBezierPoints, finalizeCurve, setCurveStage]);
 
     // ---------------------------------------------
     // WEBSOCKET INTERACTION & GESTURE PROCESSING
@@ -522,10 +790,17 @@ export function useGestureInteraction(zElongation, controlsRef) {
                             if (dangle < -Math.PI) dangle += 2 * Math.PI;
                         }
 
-                        rotationController.update(dx, dy, camera, data.state, dangle);
-                        // gestureRotatePlane syncs the new rotation to all cadObjects
-                        // so their frozen planeRotation matches the live plane.
-                        gestureRotatePlane(planeManager.getRotation());
+                        if (selectedObjectIdRef.current) {
+                            // Model / Object rotation: rotates the selected object around its deliberate center pivot
+                            const deltaQ = rotationController.computeDeltaQuaternion(dx, dy, camera, data.state, dangle);
+                            if (deltaQ) {
+                                rotateCADObject(selectedObjectIdRef.current, deltaQ);
+                            }
+                        } else {
+                            // Work-Plane rotation: rotates ONLY the active working plane
+                            rotationController.update(dx, dy, camera, data.state, dangle);
+                            gestureRotatePlane(planeManager.getRotation());
+                        }
                         cursorSmoother.reset();
                         drawingSmoother.reset();
                     } else {
@@ -590,11 +865,11 @@ export function useGestureInteraction(zElongation, controlsRef) {
                     // Update low-frequency snap state only if state transitioned
                     setSnappedInfo({ isSnapped: snapResult.isSnapped, point: snapResult.snappedTarget });
 
-                    // Handle Gesture Pinch Drawing vs. Z-Elongation
+                    // Handle Gesture Pinch Drawing vs. Z-Elongation vs. Curve
                     const rawPinch = data.state === 'PINCH' || (data.pinch_ratio !== undefined && data.pinch_ratio !== null && data.pinch_ratio < 0.48);
                     const isPinching = zHoldRef.current
                         ? (rawPinch || effectiveState === GestureStates.DRAWING || effectiveState === GestureStates.PINCH_START)
-                        : ((effectiveState === GestureStates.DRAWING || effectiveState === GestureStates.PINCH_START) && data.locked);
+                        : ((effectiveState === GestureStates.DRAWING || effectiveState === GestureStates.PINCH_START || rawPinch));
 
                     if (zHoldRef.current) {
                         // Drawing disabled in Hold mode — route pinch gestures directly to Z-Elongation
@@ -604,6 +879,40 @@ export function useGestureInteraction(zElongation, controlsRef) {
                         }
                         const ndc = { x: data.cursor.x * 2 - 1, y: -(data.cursor.y * 2) + 1 };
                         zElongationRef.current?.handleGesturePinchUpdate?.(isPinching, ndc);
+                    } else if (revolveStateRef.current?.active) {
+                        // Revolve mode: gesture pinch selects profile or axis
+                        if (isPinching && !pinchAwaitingReleaseRef.current) {
+                            pinchAwaitingReleaseRef.current = true;
+                            const rState = revolveStateRef.current;
+                            let closestObj = null;
+                            let minDist = 1.5; // cm selection radius
+                            for (const obj of (cadObjectsRef.current || [])) {
+                                const pts = obj.points || (obj.start && obj.end ? [obj.start, obj.end] : []);
+                                for (const p of pts) {
+                                    const d = Math.hypot(p[0] - finalPos[0], p[1] - finalPos[1], p[2] - finalPos[2]);
+                                    if (d < minDist) {
+                                        minDist = d;
+                                        closestObj = obj;
+                                    }
+                                }
+                            }
+                            if (closestObj) {
+                                if (rState.step === 'SELECT_AXIS' && closestObj.type === 'LINE') {
+                                    setRevolveAxis({
+                                        type: 'LINE',
+                                        lineId: closestObj.id,
+                                        points: closestObj.points || [closestObj.start, closestObj.end]
+                                    });
+                                } else {
+                                    setRevolveProfile(closestObj.id);
+                                }
+                            }
+                        } else if (!isPinching) {
+                            pinchAwaitingReleaseRef.current = false;
+                        }
+                    } else if (drawingModeRef.current === 'CURVE') {
+                        // Gesture-Controlled 4-Stage Curved-Line Tool
+                        handleCurveStep(isPinching, finalPos);
                     } else if (isPinching) {
                         if (!isGestureDrawingRef.current) {
                             isGestureDrawingRef.current = true;
@@ -621,6 +930,10 @@ export function useGestureInteraction(zElongation, controlsRef) {
                 }
             } else {
                 cursorPosRef.current = null;
+                if (drawingModeRef.current === 'CURVE') {
+                    prevPinchStateRef.current = false;
+                    pinchAwaitingReleaseRef.current = false;
+                }
                 if (zHoldRef.current) {
                     zElongationRef.current?.handleGesturePinchUpdate?.(false, null);
                 }
@@ -661,7 +974,8 @@ export function useGestureInteraction(zElongation, controlsRef) {
         setSnappedInfo,
         startDrawing,
         appendDrawingPoint,
-        finalizeDrawing
+        finalizeDrawing,
+        handleCurveStep
     ]);
 
     // ---------------------------------------------
@@ -744,15 +1058,17 @@ export function useGestureInteraction(zElongation, controlsRef) {
                 snapInfoRef.current = snapResult;
                 setSnappedInfo({ isSnapped: snapResult.isSnapped, point: snapResult.snappedTarget });
 
-                if (isPointerDrawingRef.current) {
+                if (drawingModeRef.current === 'CURVE') {
+                    handleCurveStep(false, finalPos);
+                } else if (isPointerDrawingRef.current) {
                     appendDrawingPoint(finalPos);
                 }
             }
         };
 
         const handlePointerDown = (event) => {
-            // Drawing is disabled in Z-Hold mode — Z-elongation hook owns pointer events
-            if (zHoldRef.current) return;
+            // Drawing is disabled in Z-Hold mode and Revolve mode — direct clicks/pinches belong to object interaction
+            if (zHoldRef.current || revolveStateRef.current?.active) return;
             if (event.button === 0) {
                 const rawPos = getPlaneIntersection(event);
                 if (rawPos) {
@@ -764,15 +1080,21 @@ export function useGestureInteraction(zElongation, controlsRef) {
                     );
                     const finalPos = snapResult.snappedPos;
 
-                    isPointerDrawingRef.current = true;
                     cursorPosRef.current = finalPos;
-                    startDrawing(finalPos);
+                    if (drawingModeRef.current === 'CURVE') {
+                        handleCurveStep(true, finalPos);
+                    } else {
+                        isPointerDrawingRef.current = true;
+                        startDrawing(finalPos);
+                    }
                 }
             }
         };
 
         const handlePointerUp = () => {
-            if (isPointerDrawingRef.current) {
+            if (drawingModeRef.current === 'CURVE') {
+                handleCurveStep(false, cursorPosRef.current);
+            } else if (isPointerDrawingRef.current) {
                 isPointerDrawingRef.current = false;
                 if (!zHoldRef.current) {
                     finalizeDrawing();
@@ -807,7 +1129,8 @@ export function useGestureInteraction(zElongation, controlsRef) {
         startDrawing,
         appendDrawingPoint,
         finalizeDrawing,
-        clearShapeHoldTimer
+        clearShapeHoldTimer,
+        handleCurveStep
     ]);
 
     // Expose refs for direct rendering in Canvas children

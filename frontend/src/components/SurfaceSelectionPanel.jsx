@@ -81,11 +81,10 @@ export function SurfaceSelectionPanel() {
     return (
         <div style={{
             position: 'absolute',
-            top: '50%',
+            bottom: '24px',
             right: '16px',
-            transform: 'translateY(-50%)',
-            zIndex: 9000,
-            width: '200px',
+            zIndex: 35,
+            width: '210px',
             background: PANEL_BG,
             border: `1px solid ${BORDER_COL}`,
             borderRadius: '12px',
@@ -179,7 +178,7 @@ export function SurfaceSelectionPanel() {
                         </div>
                         <div style={{ fontSize: 9, color: TEXT_DIM, marginTop: 8, marginBottom: 4 }}>DRAW ON FACE</div>
                         <div style={{ display: 'flex', gap: 4 }}>
-                            {['LINE', 'RECTANGLE', 'CIRCLE', 'FREEHAND'].map((tool) => (
+                            {['LINE', 'RECTANGLE', 'CIRCLE', 'FREEHAND', 'CURVE'].map((tool) => (
                                 <button
                                     key={tool}
                                     onClick={() => handleStartDrawing(tool)}
