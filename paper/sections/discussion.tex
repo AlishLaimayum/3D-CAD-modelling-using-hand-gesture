@@ -1,0 +1,40 @@
+\section{Discussion}
+\label{sec:discussion}
+
+The development and empirical audit of GestureCAD provide several architectural, geometric, and human-factors insights into the integration of computer vision with geometric modeling.
+
+\subsection{Architectural Decoupling and Web Performance}
+A central design challenge in modern web-based graphics is managing the tension between declarative component state management (e.g., React, Vue) and high-frequency real-time rendering. Early iterations of web-based spatial interaction tools often routed tracking coordinates directly through component state variables. In our experiments, streaming 30--60 Hz landmark frames through React's Virtual DOM triggered continuous component re-renders, causing memory heap fragmentation and periodic garbage collection pauses ($\Delta t_{\text{gc}} > 25\text{ ms}$) that visibly disrupted drawing strokes.
+
+GestureCAD's dual-path architecture resolves this tension:
+\begin{enumerate}
+    \item High-frequency spatial streams (cursor movements, live extrusion previews, plane manipulation) bypass the Virtual DOM entirely. Coordinates are maintained in mutable JavaScript references and written directly into Three.js \texttt{Float32Array} attribute buffers within the WebGL render loop (\texttt{useFrame}). This keeps cumulative software CAD execution under $0.2\text{ ms}$ per frame ($1.2\%$ of the $16.6\text{ ms}$ budget).
+    \item Reactive state updates are reserved strictly for transactional boundaries (committing an extrusion, selecting a face, triggering Undo/Redo) managed via the Zustand store and Command Pattern.
+\end{enumerate}
+This architectural separation provides a practical blueprint for building high-performance spatial interaction systems within modern web frameworks.
+
+\subsection{Topological Graph Validity vs. Spatial Geometric Embedding}
+A key technical finding from our geometric audit is the vital distinction between \textit{topological graph invariance} and \textit{spatial geometric non-self-intersection}:
+\begin{itemize}
+    \item In Section~\ref{sec:geometry}, we showed that fan triangulation of planar caps yields a half-edge graph connectivity that strictly satisfies the Euler characteristic $\chi = V - E + F = 2$ and reports zero open boundary edges for any closed polygon.
+    \item Furthermore, under Gauss's Divergence Theorem, overlapping exterior triangles contribute signed tetrahedral volumes of opposite sign that cancel algebraically, yielding exact agreement with analytical volume formulas even for non-convex profiles (as demonstrated in Benchmark B9).
+    \item However, in physical $\mathbb{R}^3$ space, fan triangulation on concave profiles produces self-intersecting cap geometry. When exported to stereolithography (STL) files, self-intersecting facets violate the manifold assumptions of slicers and FEA meshers.
+\end{itemize}
+This insight underscores that topological validation ($\chi = 2$, $\partial \Omega = \emptyset$) is a necessary, but not sufficient, condition for geometric solid validity. Geometric modeling kernels must pair topological checks with explicit geometric non-self-intersection guarantees (e.g., via Ear-Clipping / Earcut triangulation).
+
+\subsection{Practicality and Trade-Offs of Contactless CAD}
+Contactless gesture CAD is not intended to replace high-precision desktop workstations for detailed engineering drafting. Rather, its practical utility emerges in specific contexts:
+\begin{enumerate}
+    \item \textbf{Sterile and Hazardous Environments}: In medical operating rooms (reviewing patient CT-scan geometry), pharmaceutical cleanrooms, or mechanical workshops with grease and debris, touching a mouse or keyboard contaminates the input peripheral. Contactless monocular webcam control provides an entirely hygienic interface.
+    \item \textbf{Rapid Concept Ideation}: For industrial designers and architects, spatial hand gestures offer a fluid, natural medium for rough volumetric blocking and spatial proportion evaluation before committing to detailed drafting.
+    \item \textbf{Ergonomic Diversity}: Sustained desktop mouse usage contributes to repetitive strain injuries (RSI) and carpal tunnel syndrome. GestureCAD provides an alternative physical modality for spatial manipulation.
+\end{enumerate}
+Conversely, the primary inherent trade-off of mid-air interaction is the \textbf{absence of haptic feedback}. When sketching on a physical tablet or using a mouse, physical surface friction stabilizes the human motor system. In mid-air, the lack of a physical backstop exacerbates physiological tremor. GestureCAD counterbalances this absence of tactile confirmation through software-assisted snapping, dead-zone gating, and clear visual state cues.
+
+\subsection{Threats to Validity}
+Several methodological factors must be considered when interpreting the reported results:
+\begin{enumerate}
+    \item \textbf{Synthetic vs. Real Noise Modeling}: While Benchmarks B3, B4, B10, and B11 evaluated comprehensive sweeps across 180 runs with multi-seed stochastic perturbations, the synthetic noise distributions (Gaussian perturbations and random-walk drift) may not fully capture the complex biomechanical dynamics of human motor tremor, fatigue-induced drift, or optical lighting flickers.
+    \item \textbf{Hardware Dependency of Latency}: Software CAD latency (B1) was profiled on a high-performance host CPU (Intel Core i7-12700H). Performance may vary on lower-power client devices, mobile laptops, or under heavy browser background tab loads.
+    \item \textbf{Unmeasured Motion-to-Photon Latency}: As discussed in Section~\ref{sec:experiments}, physical end-to-end latency remains unmeasured by high-speed optical hardware, representing an important gap between software execution time and perceptual responsiveness.
+\end{enumerate}

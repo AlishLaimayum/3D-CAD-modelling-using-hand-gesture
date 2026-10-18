@@ -1,0 +1,198 @@
+\section{CAD Geometry Generation and Validation}
+\label{sec:geometry}
+
+A core distinction between artistic spatial sketching and engineering CAD is the mathematical rigor of the underlying geometric model. GestureCAD implements a custom polyhedral solid modeling kernel that generates closed, watertight surface meshes via linear extrusion and rotational sweeping, coupled with automated topological validation.
+
+\subsection{2D Planar Profile Parameterization and Winding Orientation}
+A 2D sketch profile is parameterized as an ordered sequence of planar vertices in local working-plane coordinates: $\mathcal{P} = \{\mathbf{q}_i = (u_i, 0, v_i)\}_{i=0}^{N-1}$. 
+
+To construct consistent outward-facing normals during subsequent 3D sweeping, the profile must possess a deterministic counter-clockwise (CCW) winding order. The signed planar area $A(\mathcal{P})$ is evaluated using the Gauss-Green / Shoelace formula:
+\begin{equation}
+A(\mathcal{P}) = \frac{1}{2} \sum_{i=0}^{N-1} (u_i v_{i+1} - u_{i+1} v_i), \quad \text{with } \mathbf{q}_N \equiv \mathbf{q}_0
+\label{eq:shoelace}
+\end{equation}
+If $A(\mathcal{P}) < 0$, the profile vertices traverse clockwise (CW); the order is reversed: $\mathcal{P} \leftarrow \text{reverse}(\mathcal{P})$, guaranteeing $A(\mathcal{P}) > 0$.
+
+\begin{figure}[t]
+    \centering
+    \fbox{%
+        \parbox[c][5.4cm][c]{0.92\linewidth}{%
+            \centering\small\sffamily
+            \textbf{Figure 5: Sketch-to-Solid Pipeline Placeholder}\\
+            \vspace{0.3cm}
+            \textit{Intended Sequential Progression (Horizontal Strip):}\\
+            (a) \textbf{Planar Profile}: 2D closed polygon sketched on the active working plane with vertex closure snapping;\\
+            (b) \textbf{Normal Sweeping}: Continuous upward displacement along plane normal $\vec{n}_{\text{plane}}$ driven by Z-Hold hand gesture;\\
+            (c) \textbf{Watertight Extrusion}: Resulting closed 3D polyhedral prism with outward side quads and planar end caps;\\
+            (d) \textbf{Revolved Solid}: 2D cross-section revolved $360^\circ$ around an in-plane axis via Rodrigues' formula with welded axis vertices.\\
+            \vspace{0.3cm}
+            \footnotesize Expected file: \texttt{paper/figures/fig5_sketch_to_solid.png}
+        }%
+    }
+    \caption{The sketch-to-solid modeling pipeline in GestureCAD. Closed 2D profiles are swept into closed 3D polyhedra through linear extrusion or rotational sweeping.}
+    \label{fig:sketch_to_solid}
+\end{figure}
+
+\subsection{Linear Extrusion and Cap Triangulation}
+Linear extrusion sweeps the planar profile $\mathcal{P}$ along the working plane normal vector $\vec{n}_{\text{plane}}$ by an extrusion distance $h > 0$:
+\begin{equation}
+\Omega = \mathcal{P} \times [0, h] \cdot \vec{n}_{\text{plane}}
+\label{eq:extrusion_sweep}
+\end{equation}
+The extrusion kernel constructs:
+\begin{enumerate}
+    \item \textbf{Bottom Ring Vertices}: $\mathbf{v}_i = [u_i, 0, v_i]$ for $i \in \{0, \dots, N-1\}$.
+    \item \textbf{Top Ring Vertices}: $\mathbf{v}_{i+N} = [u_i, h, v_i]$ for $i \in \{0, \dots, N-1\}$. Total vertex count: $V = 2N$.
+    \item \textbf{Side Wall Faces}: For each segment between vertex $i$ and $j = (i+1) \bmod N$, two counter-clockwise outward-oriented triangles are generated:
+    \begin{equation}
+    \mathcal{F}_{\text{side}, 1} = [i, i+N, j+N], \quad \mathcal{F}_{\text{side}, 2} = [i, j+N, j]
+    \label{eq:side_quads}
+    \end{equation}
+    yielding $2N$ triangular side faces.
+    \item \textbf{Cap Triangulation}: In the current implementation, planar end caps are constructed using a triangle fan rooted at index 0 for the bottom cap and index $N$ for the top cap:
+    \begin{align}
+    \mathcal{F}_{\text{bottom}, i} &= [0, i, i+1], & i \in \{1, \dots, N-2\} \label{eq:bottom_cap} \\
+    \mathcal{F}_{\text{top}, i} &= [N, N+i+1, N+i], & i \in \{1, \dots, N-2\} \label{eq:top_cap}
+    \end{align}
+    yielding $N-2$ triangles per cap, or $2N - 4$ cap faces in total.
+\end{enumerate}
+
+\subsubsection{Critical Computational Geometry Audit of Fan Triangulation}
+A rigorous computational geometry analysis reveals an important mathematical distinction between topological graph connectivity and spatial geometric embedding:
+\begin{itemize}
+    \item \textbf{Convex Profiles}: For any strictly convex polygon (e.g., rectangles, circles, regular polygons), the triangle fan from vertex 0 produces a valid, non-overlapping planar triangulation that fully tiles the interior.
+    \item \textbf{Concave Profiles}: For non-convex profiles (e.g., L-shapes, T-shapes, star polygons), chords connecting vertex 0 to vertex $i$ may lie \textit{outside} the polygon boundary or cross other edges. Consequently, fan cap triangles overlap and self-intersect in $\mathbb{R}^3$.
+    \item \textbf{Topological vs. Geometric Validity}: Interestingly, because the half-edge graph topology remains isomorphic to a triangulated sphere, the mesh still reports an Euler characteristic of $\chi = 2$ and 0 boundary edges. Furthermore, under Gauss's Divergence Theorem, overlapping exterior triangles traverse in reverse orientation, causing their signed volume contributions to cancel out algebraically and still match the analytical volume. However, \textit{physically}, the resulting surface mesh is an immersed 2-manifold with self-intersections rather than an embedded manifold, causing rendering artifacts and slicing errors in CAM software.
+    \item \textbf{Required Generalization}: To support arbitrary simple concave polygons without self-intersection, cap generation requires Ear-Clipping (e.g., Earcut~\cite{held2001vrp}) or constrained Delaunay triangulation. (Notably, GestureCAD's \texttt{RevolveEngine} already uses Earcut for partial end caps, as detailed below).
+\end{itemize}
+
+\subsection{Rotational Sweeping (Revolve Engine)}
+The \texttt{RevolveEngine} sweeps a 2D cross-sectional profile $\mathcal{P}$ around an arbitrary in-plane axis of revolution defined by point $\mathbf{a}_0$ and unit direction $\vec{v}$.
+
+For each profile vertex $\mathbf{p} \in \mathcal{P}$, the relative vector $\mathbf{r} = \mathbf{p} - \mathbf{a}_0$ is decomposed into components parallel and perpendicular to $\vec{v}$:
+\begin{equation}
+\mathbf{r}_{\parallel} = (\mathbf{r} \cdot \vec{v}) \vec{v}, \quad \mathbf{r}_{\perp} = \mathbf{r} - \mathbf{r}_{\parallel}
+\label{eq:revolve_decomp}
+\end{equation}
+The rotation of $\mathbf{p}$ through angle $\phi$ is computed via Rodrigues' rotation formula:
+\begin{equation}
+\mathbf{p}_{\text{rot}}(\phi) = \mathbf{a}_0 + \mathbf{r}_{\parallel} + \cos(\phi) \mathbf{r}_{\perp} + \sin(\phi) (\vec{v} \times \mathbf{r}_{\perp})
+\label{eq:rodrigues}
+\end{equation}
+
+The rotational sweep incorporates two critical solid modeling safeguards:
+\begin{enumerate}
+    \item \textbf{On-Axis Vertex Welding}: If a profile vertex lies on the rotation axis ($\|\mathbf{r}_{\perp}\| < 10^{-4}\text{ m}$), revolving it would create degenerate zero-area quads. The engine identifies on-axis vertices and assigns them a single fixed vertex index across all angular rings. Adjacent faces collapse into fan triangles terminating at the axis.
+    \item \textbf{Seam Stitching and Partial Caps}: For a complete $360^\circ$ revolution, ring $M$ wraps seamlessly to ring 0 without duplicate vertices. For partial revolutions ($\theta < 360^\circ$), the start and end boundary profiles are sealed using Earcut triangulation (\texttt{THREE.ShapeUtils.triangulateShape}), guaranteeing valid non-intersecting end caps for arbitrary profiles.
+\end{enumerate}
+
+\begin{figure}[t]
+    \centering
+    \fbox{%
+        \parbox[c][5.4cm][c]{0.92\linewidth}{%
+            \centering\small\sffamily
+            \textbf{Figure 6: Geometry and Topology Validation Placeholder}\\
+            \vspace{0.3cm}
+            \textit{Intended Screenshot:}\\
+            Inspection of a generated polyhedral solid mesh showing:\\
+            -- Viewport wireframe showing 2-manifold edge connectivity with no unshared boundaries;\\
+            -- Visual arrows displaying computed outward-pointing unit face normal vectors $\vec{n}_k$;\\
+            -- The interactive CAD Inspector overlay verifying topological invariants:\\
+            * Euler characteristic: $\chi = V - E + F = 2.000$;\\
+            * Boundary edges: $\partial \Omega = 0$;\\
+            * Non-manifold edges: $0$;\\
+            * Exact Divergence Theorem volume: $V_{\text{div}} = 24.375\text{ m}^3$ matching analytical volume.\\
+            \vspace{0.3cm}
+            \footnotesize Expected file: \texttt{paper/figures/fig6_mesh_validation.png}
+        }%
+    }
+    \caption{Topological invariant validation in GestureCAD. Every generated solid is verified for watertightness ($\partial \Omega = 0$), 2-manifold edge degree ($d(e) = 2$), orientation consistency, Euler characteristic ($\chi = 2$), and Divergence Theorem volume.}
+    \label{fig:mesh_validation}
+\end{figure}
+
+\subsection{Topological Invariant Validation Suite}
+Every geometric solid instantiated in GestureCAD is represented by a \texttt{SolidMesh} data structure and subjected to an automated topological validation suite (Figure~\ref{fig:mesh_validation}):
+
+\textbf{1. Edge Adjacency and 2-Manifold Verification}: The engine constructs a half-edge adjacency map. Each undirected edge $e = (v_a, v_b)$ records the list of incident faces and their traversal directions. A valid 2-manifold solid must satisfy:
+\begin{equation}
+|\mathcal{F}(e)| = 2, \quad \forall e \in \mathcal{E}
+\label{eq:manifold_edge}
+\end{equation}
+Edges with $|\mathcal{F}(e)| = 1$ represent open boundary tears ($\partial \Omega \neq \emptyset$), indicating a non-watertight mesh. Edges with $|\mathcal{F}(e)| > 2$ represent non-manifold junctions where three or more surface sheets intersect.
+
+\textbf{2. Normal Orientation Consistency}: For every edge shared by two faces $\mathcal{F}_1$ and $\mathcal{F}_2$, the directed edge traversals must be strictly opposed:
+\begin{equation}
+\text{direction}(\mathcal{F}_1, e) + \text{direction}(\mathcal{F}_2, e) = 0
+\label{eq:orientation_consistency}
+\end{equation}
+ensuring all surface normals point consistently outward.
+
+\textbf{3. Euler Characteristic Invariant}: For any closed, orientable, simply connected 2-manifold polyhedron of genus $g = 0$ (homeomorphic to a 2-sphere), the Euler characteristic $\chi$ is an invariant topological integer:
+\begin{equation}
+\chi = V - E + F = 2(1 - g) = 2
+\label{eq:euler}
+\end{equation}
+For an extruded $N$-gon mesh, $V = 2N$, $F = 4N - 4$, and $E = 6N - 6$. Substituting these counts into Eq.~\eqref{eq:euler}:
+\begin{equation}
+\chi = (2N) - (6N - 6) + (4N - 4) = 2
+\label{eq:euler_proof}
+\end{equation}
+\textit{Topological Scope}: The invariant $\chi = 2$ strictly characterizes genus-0 solids. Prisms containing through-holes or hollow toroidal cavities possess genus $g \ge 1$ ($\chi \le 0$) and are outside the current kernel's topological domain.
+
+\textbf{4. Exact Volumetric Integration via Divergence Theorem}: The signed volume $V(\Omega)$ of the enclosed solid domain $\Omega$ is computed directly from its boundary surface $\partial \Omega$ without voxelization. Applying Gauss's Divergence Theorem to the vector field $\vec{F}(\mathbf{x}) = \frac{1}{3}\mathbf{x}$ (where $\nabla \cdot \vec{F} = 1$):
+\begin{equation}
+V(\Omega) = \iiint_{\Omega} (\nabla \cdot \vec{F}) \, dV = \iint_{\partial \Omega} (\vec{F} \cdot \vec{n}) \, dA
+\label{eq:divergence_theorem}
+\end{equation}
+For a closed surface composed of planar triangular facets $\mathcal{F}_k = (\mathbf{a}_k, \mathbf{b}_k, \mathbf{c}_k)$ with outward CCW winding, this reduces to the discrete signed tetrahedral sum:
+\begin{equation}
+V(\Omega) = \frac{1}{6} \sum_{k=1}^{F} \mathbf{a}_k \cdot (\mathbf{b}_k \times \mathbf{c}_k)
+\label{eq:divergence_volume}
+\end{equation}
+
+\begin{figure}[t]
+    \centering
+    \fbox{%
+        \parbox[c][5.4cm][c]{0.92\linewidth}{%
+            \centering\small\sffamily
+            \textbf{Figure 7: Multi-Surface Sketching Workflow Placeholder}\\
+            \vspace{0.3cm}
+            \textit{Intended Screenshot:}\\
+            Demonstration of dynamic sketch-on-face plane attachment:\\
+            -- A base extruded rectangular prism with named faces (Top, Front, Right);\\
+            -- The user raycasts and selects the top face $\to$ FaceEnumerator constructs local orthonormal frame $\mathbf{R}_{\text{face}} \in SO(3)$;\\
+            -- A local 2D sketch plane is attached directly onto the selected face;\\
+            -- A secondary circular profile is sketched on the face and extruded upward into an aligned cylindrical boss feature.\\
+            \vspace{0.3cm}
+            \footnotesize Expected file: \texttt{paper/figures/fig7_sketch_on_face.png}
+        }%
+    }
+    \caption{Multi-surface sketching in GestureCAD. The \texttt{FaceEnumerator} derives a local orthonormal coordinate basis $\mathbf{R} \in SO(3)$ from selected polyhedron faces, permitting hierarchical sketch-on-face operations directly in 3D space.}
+    \label{fig:sketch_on_face}
+\end{figure}
+
+\subsection{Multi-Surface Decomposition and Local $SO(3)$ Tangent Frames}
+A defining capability of professional CAD is the capacity to sketch new features directly on existing solid faces (Figure~\ref{fig:sketch_on_face}). GestureCAD implements this via the \texttt{FaceEnumerator} pipeline:
+
+When a user raycasts onto a solid mesh with outward face normal $\vec{n} \in \mathbb{R}^3$, the system constructs a local, right-handed orthonormal coordinate basis $\mathbf{R}_{\text{face}} \in SO(3)$ on the surface:
+\begin{enumerate}
+    \item To avoid numerical gimbal lock when $\vec{n}$ aligns with the global vertical axis, a reference vector $\vec{r}_{\text{ref}}$ is selected:
+    \begin{equation}
+    \vec{r}_{\text{ref}} = \begin{cases}
+    [0, 1, 0]^T, & \text{if } |\vec{n} \cdot [0, 1, 0]^T| < 0.9 \\
+    [1, 0, 0]^T, & \text{otherwise}
+    \end{cases}
+    \label{eq:ref_vector}
+    \end{equation}
+    \item In-plane unit tangent $\vec{t}$ and bitangent $\vec{b}$ vectors are computed via Gram-Schmidt cross products:
+    \begin{equation}
+    \vec{t} = \frac{\vec{n} \times \vec{r}_{\text{ref}}}{\|\vec{n} \times \vec{r}_{\text{ref}}\|_2}, \quad \vec{b} = \vec{t} \times \vec{n}
+    \label{eq:tangent_basis}
+    \end{equation}
+    \item The face-attached rotation matrix $\mathbf{R}_{\text{face}} = [\vec{t} \;\; \vec{n} \;\; \vec{b}]$ satisfies:
+    \begin{equation}
+    \det(\mathbf{R}_{\text{face}}) = +1, \quad \mathbf{R}_{\text{face}}^T \mathbf{R}_{\text{face}} = \mathbf{I}
+    \label{eq:so3_property}
+    \end{equation}
+\end{enumerate}
+For curved cylindrical surfaces, the normal $\vec{n}$ is computed radially from the longitudinal axis to the raycast hit point, establishing a local tangent plane for surface-attached sketching.

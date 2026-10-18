@@ -1,0 +1,63 @@
+\section{Related Work}
+\label{sec:related_work}
+
+The design of GestureCAD intersects three principal domains of research: vision-based hand tracking and signal conditioning, spatial and immersive CAD interaction paradigms, and browser-hosted computational geometry engines.
+
+\subsection{Vision-Based Hand Tracking and Kinematic Conditioning}
+Optical markerless hand pose estimation has evolved from early color-segmentation and depth-map skeletal tracking algorithms to deep learning-based regression architectures. Early spatial interaction systems, such as FAAST~\cite{suma2011faast}, relied on structured-light infrared depth sensors (e.g., Microsoft Kinect) to infer coarse arm and upper-body skeletons, but lacked the spatial resolution required for fine multi-finger articulation. Ultraleap's Leap Motion controller~\cite{leapmotion2013} achieved sub-millimeter finger tracking using dedicated desk-mounted stereo infrared cameras and LED illumination; however, its adoption remains constrained by the requirement for specialized external hardware and a restricted optical tracking volume.
+
+The introduction of Google MediaPipe Hands~\cite{zhang2020mediapipe,lugaresi2019mediapipe} marked a critical transition, enabling monocular 2.5D landmark regression directly from commodity RGB video streams at real-time frame rates ($> 25\text{ FPS}$). MediaPipe utilizes a two-stage pipeline: a single-shot detector identifies hand palm boundaries, followed by a regression network estimating the 3D coordinates of 21 articulated joint landmarks. Grishchenko et al.~\cite{ACP2020handpose} subsequently demonstrated in-browser execution via TensorFlow.js.
+
+However, commodity vision streams provide raw coordinate estimates with notable physiological and sensor noise. Unfiltered hand coordinates exhibit micro-tremor ($\sigma \approx 1$--$5\text{ mm}$), optical quantization jitter, and perspective foreshortening. While adaptive filtering algorithms such as the $1\text{\euro}$ Filter~\cite{casiez2012oneeuro} and double exponential smoothing~\cite{laviola2003double} have successfully minimized jitter in general 2D pointing tasks, spatial CAD sketching imposes unique demands: spatial strokes require dead-band noise gating during resting periods, velocity-adaptive smoothing during active contour authoring, distance-invariant gesture thresholds, and limit-cycle hysteresis to prevent pen-state chatter. In GestureCAD, we integrate these requirements into a specialized kinematic conditioning pipeline.
+
+\subsection{Spatial, Gesture-Driven, and Immersive 3D CAD}
+The aspiration to interact with CAD models through direct spatial gestures extends back several decades. An important milestone in vision-driven geometric modeling was \textit{Shape-It-Up} by Vinayak et al.~\cite{vinayak2013shapeitup}, which utilized depth cameras to interpret hand gestures for interactive bending, scaling, and twisting of generalized cylindrical shapes. While demonstrating the intuitive appeal of spatial manipulation, the system was restricted to continuous deformation of pre-existing cylindrical topologies and did not support arbitrary 2D sketch-to-solid extrusion, face-local sketching, or closed polyhedral boundary representations.
+
+In the realm of immersive computing, commercial Virtual Reality tools such as Gravity Sketch~\cite{gravitysketch} and Google Tilt Brush~\cite{tiltbrush} introduced sweeping six-degree-of-freedom brush strokes in 3D space. While highly effective for conceptual automotive styling and artistic ideation, these immersive authoring tools fundamentally trade engineering rigor for artistic fluidity: they primarily construct open, non-manifold polygonal ribbons, non-orientable surface meshes, or loose spline networks. Such representations do not satisfy the mathematical criteria of solid models (orientability, closure, and 2-manifold topology), preventing direct downstream volumetric calculation, boolean evaluation, or physical fabrication via standard slicing software.
+
+Conversely, established desktop CAD systems---such as Dassault Syst\`emes SolidWorks~\cite{solidworks}, Autodesk AutoCAD~\cite{autocad}, and the open-source FreeCAD platform~\cite{freecad}---enforce rigorous Boundary Representation (B-Rep) and Constructive Solid Geometry (CSG) standards~\cite{mantyla1988,hoffmann1989geometric}. These platforms maintain complete topological data structures (e.g., winged-edge, radial-edge, or half-edge meshes), exact NURBS surface definitions, parametric feature dependency trees, and bidirectional geometric constraint solvers. However, their interaction paradigm remains strictly anchored to the 2D mouse and keyboard. Novice users must mentally decompose spatial features into disjoint planar projections, introducing a cognitive barrier during initial concept sketching. 
+
+GestureCAD explores an intermediate design space: coupling the spatial directness of natural hand gestures with explicit topological validation to produce closed, watertight polyhedral solids directly from planar sketch profiles, without requiring expensive VR peripherals.
+
+\subsection{Web-Based Computational Geometry and Real-Time Graphics}
+With the advent of WebGL and WebAssembly (WASM), geometric modeling has increasingly migrated to browser environments. Three.js~\cite{threejs} provides a high-level scenegraph and GPU shader abstractions, while React Three Fiber (R3F)~\cite{r3f} enables declarative component composition. Onshape demonstrated the commercial viability of cloud-native CAD, executing server-side geometric kernel computations with client-side WebGL streaming.
+
+For client-side geometry evaluation, recent efforts have focused on porting C++ CAD engines to WebAssembly: OpenCASCADE.js~\cite{opencascadejs} compiles the Open CASCADE B-Rep kernel to WASM, enabling full NURBS evaluation and STEP/IGES import in JavaScript. Similarly, ManifoldCAD~\cite{manifoldcad} provides high-performance, guaranteed-manifold boolean operations on triangle meshes via spatial decomposition. 
+
+However, integrating spatial tracking streams into declarative web frameworks presents performance bottlenecks: streaming 30--60 Hz landmark coordinates through React's Virtual DOM reconciler incurs significant garbage collection and reconciliation latency. GestureCAD addresses this bottleneck through a dual-frequency architecture that routes high-frequency position data directly to mutable GPU typed arrays via Three.js \texttt{useFrame} hooks, while reserving reactive state updates for transactional CAD operations.
+
+\begin{table*}[t]
+\caption{Systematic comparison of GestureCAD against representative CAD systems, immersive spatial authoring tools, and gesture-modeling prototypes across functional and geometric dimensions.}
+\label{tab:related_work}
+\centering
+\scriptsize
+\begin{tabular}{p{2.5cm}p{1.8cm}p{1.8cm}p{1.8cm}p{2.2cm}p{2.2cm}p{2.0cm}p{1.8cm}}
+\toprule
+\textbf{Dimension / Feature} & \textbf{Commercial CAD} (e.g., SolidWorks~\cite{solidworks}) & \textbf{Open-Source CAD} (e.g., FreeCAD~\cite{freecad}) & \textbf{Immersive VR CAD} (e.g., Gravity Sketch~\cite{gravitysketch}) & \textbf{Gesture Prototype} (e.g., Shape-It-Up~\cite{vinayak2013shapeitup}) & \textbf{Web Frameworks} (e.g., OpenCASCADE.js~\cite{opencascadejs}) & \textbf{Web Cloud CAD} (e.g., Onshape) & \textbf{GestureCAD} (This Work) \\
+\midrule
+\textbf{Primary Input Modality} & 2D Mouse + Keyboard & 2D Mouse + Keyboard & 6-DoF Tracked VR Controllers & Depth Camera Hand Gestures & Mouse / Scripting APIs & Mouse + Keyboard & Monocular RGB Hand Gestures \\
+\textbf{Hardware Peripherals} & Standard Desktop PC & Standard Desktop PC & Dedicated VR HMD + Controllers & IR Depth Sensor (Kinect) & Standard Web Browser & Standard Web Browser & Commodity USB Webcam \\
+\textbf{Deployment Model} & Native Desktop ($>10\text{ GB}$) & Native Desktop & Native VR App (SteamVR/Quest) & Standalone Lab Prototype & In-Browser WASM Library & Browser Client + Cloud Kernel & Client-Edge (Python + WebGL) \\
+\textbf{Geometric Representation} & Exact NURBS B-Rep (Parasolid) & Exact NURBS B-Rep (OCCT) & Sub-D Surfaces / Open Polygon Ribbons & Deformed Mesh Generalized Cylinders & Exact NURBS B-Rep (OCCT) & Exact NURBS B-Rep & Triangulated Polyhedral Surface Mesh \\
+\textbf{Topological Validation} & Complete Manifold \& Non-Manifold Engine & OCCT Kernel Validity Checks & None / Not Enforced (Open Boundary Common) & Surface Vertex Constraints & OCCT Topological Validity Checks & Complete Industrial Kernel Validation & Automated Invariant ($\chi = 2$, $\partial \Omega = 0$, Deg. 2) \\
+\textbf{Extrusion \& Revolve} & Full Feature Tree (Draft, Thin, Sweep) & Pad \& Revolution Features & Spatial Curve Lofting / Stroke Sweeping & Axial Scaling / Bending of Primitives & Algorithmic Swept Surfaces & Full Parametric Features & Linear Extrusion + Revolve (Rodrigues) \\
+\textbf{Sketching on Faces} & Planar Faces \& Datum Planes & Planar Faces & Freehand Spatial Snapping & Not Supported / Not Documented & Algorithmic Basis Alignment & Planar Faces & Local $SO(3)$ Tangent Coordinate Frames \\
+\textbf{Tremor Compensation} & N/A (Mechanical Mouse Friction) & N/A (Mechanical Mouse Friction) & Controller Smoothing Filters & Basic Spatial Averaging & N/A & N/A & 3-Stage Pipeline (Deadzone + EMA + Hysteresis) \\
+\textbf{CSG Booleans} & Full Solid Booleans & Full Solid Booleans & Mesh Intersections (Sub-D) & Cylindrical Union / Merging & Complete Boolean Operations & Complete Solid Booleans & Not Implemented (Future Work) \\
+\textbf{Export Capabilities} & STEP, IGES, Parasolid, STL, DXF & STEP, IGES, STL, OBJ, DXF & OBJ, FBX, IGES (Pro) & STL & STEP, IGES, BREP, STL & STEP, Parasolid, STL, DXF & Wavefront OBJ, AutoCAD DXF, STL, JSON \\
+\textbf{Primary Design Focus} & Industrial Production \& Manufacturing & Parametric Open Engineering & Aesthetic Industrial Concept Styling & Interactive Primitive Shape Expression & In-Browser Geometry Computation & Enterprise Collaborative Cloud CAD & Accessible Gesture-Driven Spatial Prototyping \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Comparative Analysis and System Positioning}
+Table~\ref{tab:related_work} synthesizes the architectural, geometric, and functional characteristics of GestureCAD alongside established desktop CAD platforms, immersive spatial modeling environments, gesture research prototypes, and web geometry frameworks.
+
+Rather than claiming algorithmic superiority over mature industrial systems, this comparison clarifies the specific trade-offs and engineering boundaries of GestureCAD:
+\begin{enumerate}
+    \item \textbf{Geometric Kernel Maturity}: Commercial desktop CAD (SolidWorks) and open-source systems (FreeCAD) provide complete parametric feature trees, exact NURBS curves, fillets, chamfers, and boolean CSG operations backed by multi-decade industrial kernels (Parasolid, Open CASCADE). GestureCAD does not attempt to reproduce this extensive feature breadth. Its geometric core is a specialized polyhedral mesh generator with automated 2-manifold validation ($\chi = 2$), designed specifically for direct-manipulation linear and rotational sweeping.
+    \item \textbf{Input Modality and Setup Burden}: Desktop CAD requires seated WIMP interaction, and immersive VR CAD (Gravity Sketch) demands high-cost headsets and induces musculoskeletal fatigue. In contrast, GestureCAD operates on commodity monocular webcams, eliminating hardware barriers while preserving spatial directness.
+    \item \textbf{Signal Conditioning}: While VR controllers rely on onboard IMUs and optical tracking constellations for millimeter accuracy, monocular computer vision landmark streams require specialized kinematic filtering. GestureCAD explicitly addresses this with an integrated scale-normalized hysteresis and velocity-adaptive tremor attenuation stack.
+    \item \textbf{Deployment Model}: Unlike browser-based cloud CAD (Onshape) which hosts its kernel on enterprise server clusters, GestureCAD distributes execution between a local edge vision daemon and a client-side WebGL engine.
+\end{enumerate}
+In summary, GestureCAD occupies a distinct and practical niche: an accessible, webcam-driven spatial modeling environment that combines the fluid affordance of hand gestures with mathematically verified polyhedral geometry.

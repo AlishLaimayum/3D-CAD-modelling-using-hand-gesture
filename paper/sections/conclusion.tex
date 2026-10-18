@@ -1,0 +1,19 @@
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
+
+In this paper, we presented \textbf{GestureCAD}, a contactless, web-based 3D Computer-Aided Design modeling application driven by monocular RGB hand tracking. Rather than claiming an algorithmic breakthrough in computational geometry or machine learning, this work presents a practical systems-engineering integration that bridges commodity vision tracking with an interactive in-browser polyhedral geometry engine.
+
+By establishing a decoupled client-edge architecture, GestureCAD separates Python-based neural hand tracking from a zero-reconciliation React Three Fiber WebGL client, executing software CAD operations within $0.1994\text{ ms}$ mean CPU time per frame on host hardware. To overcome the imprecision of contactless spatial input, we introduced a specialized kinematic conditioning pipeline: anatomical scale normalization eliminates camera depth variation under perspective projection, dual-threshold hysteresis suppresses boundary state chatter by an aggregate mean of $85.55\%$ [$95\%$ CI: $84.01\%$–$87.10\%$], velocity-adaptive smoothing attenuates RMS cursor jitter by $52.43\%$ [$95\%$ CI: $52.16\%$–$52.71\%$], and 3D snapping reduces targeting error by $79.74\%$ [$95\%$ CI: $77.28\%$–$82.20\%$].
+
+Crucially, GestureCAD couples spatial interaction with explicit geometric validation. The system synthesizes closed polyhedral solids via linear extrusion and Rodrigues rotational sweeping, verifying 2-manifold topological invariants ($\chi = V - E + F = 2$, zero open boundary edges, zero non-manifold edges) and evaluating exact volumes via Gauss's Divergence Theorem. Furthermore, local $SO(3)$ orthonormal frame derivation enables hierarchical sketch-on-face operations directly on polyhedral boundaries and cylindrical tangent planes, with native export to Wavefront OBJ, AutoCAD DXF, and stereolithography STL.
+
+\subsection{Future Work}
+Building upon the verified engineering foundation established in this work, immediate avenues for future research include:
+\begin{enumerate}
+    \item \textbf{Arbitrary Polygon Triangulation}: Upgrading the linear extrusion engine from fan triangulation to robust Ear-Clipping (Earcut) to eliminate cap self-intersections on non-convex profiles.
+    \item \textbf{Higher-Genus Topology Support}: Extending the geometric data structure to support profiles with nested interior holes, generalizing the topological invariant check to $\chi = 2(1 - g)$.
+    \item \textbf{WebAssembly CSG Integration}: Incorporating a WebAssembly-compiled boolean evaluation engine (e.g., ManifoldCAD~\cite{manifoldcad} or OpenCASCADE.js~\cite{opencascadejs}) to support subtractive cutting, pocketing, and boolean unions.
+    \item \textbf{Client-Side WASM Vision}: Migrating MediaPipe Hands inference entirely to client-side WebAssembly / WebGPU, transforming GestureCAD into a true zero-install, serverless web application.
+    \item \textbf{Human-Factors Usability Evaluation}: Formally executing the 12-participant within-subjects usability study protocol developed in \texttt{/study/}, rigorously quantifying task completion times, error rates, SUS usability scores, and NASA-TLX cognitive workload distributions against standard mouse-driven desktop CAD.
+\end{enumerate}
+Through these developments, GestureCAD demonstrates a viable pathway toward making 3D spatial modeling more accessible, natural, and ergonomically adaptable without sacrificing the topological rigor demanded by modern engineering design.

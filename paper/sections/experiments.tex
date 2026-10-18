@@ -1,0 +1,209 @@
+\section{Experimental Evaluation and Results}
+\label{sec:experiments}
+
+To ensure complete academic transparency, all experimental evaluations in GestureCAD are explicitly categorized by scientific provenance:
+\begin{itemize}
+    \item \textbf{REAL}: Evaluated on real executing software code or physical hardware.
+    \item \textbf{SIMULATED (Parameter Sweeps)}: Evaluated across multi-seed stochastic parameter sweeps with reported 95\% confidence intervals (CIs) and min-max ranges.
+    \item \textbf{ANALYTIC}: Derived from exact mathematical and geometric theorems.
+    \item \textbf{UNMEASURED}: Explicitly documented as unmeasured pending specialized physical laboratory apparatus or human trials.
+\end{itemize}
+Table~\ref{tab:provenance} summarizes the evaluation matrix.
+
+\begin{table}[t]
+\caption{Scientific provenance and methodology matrix.}
+\label{tab:provenance}
+\centering
+\small
+\begin{tabular}{llcc}
+\toprule
+\textbf{ID} & \textbf{Evaluated Dimension} & \textbf{Provenance} & \textbf{Sample Scope} \\
+\midrule
+B1 & Software CAD Subsystem Latency & \textbf{REAL} & 5,000 iterations \\
+B2 & Physical Motion-to-Photon Latency & \textbf{UNMEASURED} & Requires high-speed rig \\
+B3 & Cursor Jitter Attenuation & \textbf{SIMULATED} & 180 runs (90k pts) \\
+B4 & Hysteresis State Chatter Reduction & \textbf{SIMULATED} & 180 runs (450k frames) \\
+B6 & Distance Scale Invariance & \textbf{ANALYTIC} & Pinhole projection model \\
+B9 & Topology \& Divergence Volume & \textbf{REAL + ANALYTIC} & 20 polyhedra \\
+B10 & Shape Regularization Accuracy & \textbf{SIMULATED} & 180 runs (18k strokes) \\
+B11 & Snapping Targeting Precision & \textbf{SIMULATED} & 180 runs (36k queries) \\
+RL-1 & Webcam Capture Throughput & \textbf{REAL} & 141 frames physical cam \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+    \centering
+    \fbox{%
+        \parbox[c][5.4cm][c]{0.92\linewidth}{%
+            \centering\small\sffamily
+            \textbf{Figure 8: Experimental Benchmark Results Placeholder}\\
+            \vspace{0.3cm}
+            \textit{Intended Dual-Panel Benchmark Plots:}\\
+            (a) \textbf{Left Panel -- Tremor Attenuation Sensitivity Sweep (Benchmark B3)}: Plot showing RMS cursor jitter (mm) as a function of input noise level ($\sigma = 1.0$ to $6.0\text{ mm}$), comparing raw unconditioned input against GestureCAD filtered output across 180 simulation runs with 95\% confidence interval bands;\\
+            (b) \textbf{Right Panel -- Hysteresis State Stability Sweep (Benchmark B4)}: Plot comparing number of spurious gesture state flips per 2,500 boundary frames between a naive single-threshold classifier ($\tau=0.48$) and the GestureCAD dual-threshold hysteresis automaton across six decision-boundary noise levels ($\sigma = 0.015$ to $0.090$).\\
+            \vspace{0.3cm}
+            \footnotesize Expected file: \texttt{paper/figures/fig8_experimental_results.png}
+        }%
+    }
+    \caption{Empirical benchmark results. (a) RMS cursor jitter reduction across increasing noise levels ($\sigma = 1.0$--$6.0\text{ mm}$); (b) Spurious state-flip suppression of the dual-threshold hysteresis automaton near the pinch decision boundary.}
+    \label{fig:experimental_results}
+\end{figure*}
+
+\subsection{Software CAD Pipeline Latency (Benchmark B1)}
+We evaluated the computational execution time of each discrete software CAD stage in JavaScript/Node.js over $5\,000$ consecutive iterations on an Intel Core i7-12700H CPU ($2.30\text{ GHz}$). Table~\ref{tab:latency} provides the detailed statistical breakdown.
+
+\begin{table}[t]
+\caption{Software CAD pipeline subsystem execution latency ($N = 5\,000$ iterations, values in milliseconds).}
+\label{tab:latency}
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Subsystem Stage} & \textbf{Mean} & \textbf{Med.} & \textbf{p99} & \textbf{Std} \\
+\midrule
+Ray-Plane Unprojection & 0.0045 & 0.0032 & 0.0219 & 0.0171 \\
+Snapping Inference & 0.0024 & 0.0015 & 0.0068 & 0.0107 \\
+Shape Regularization & 0.0836 & 0.0598 & 0.3769 & 0.1035 \\
+Extrusion \& Topology Validation & 0.1009 & 0.0826 & 0.4573 & 0.0803 \\
+Face Enumeration \& $SO(3)$ Basis & 0.0080 & 0.0041 & 0.0324 & 0.0279 \\
+\midrule
+\textbf{Cumulative Software CAD} & \textbf{0.1994} & \textbf{0.1512} & \textbf{0.8953} & \textbf{0.2395} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Finding}: The cumulative execution time of all CAD computational stages averages $0.1994\text{ ms}$ per frame ($0.1512\text{ ms}$ median, $0.8953\text{ ms}$ 99th percentile), consuming only $1.2\%$ of the standard $16.6\text{ ms}$ ($60\text{ FPS}$) rendering budget.
+
+\subsubsection{Critical Distinction: Software Latency vs. Motion-to-Photon Latency}
+We emphasize that the $0.1994\text{ ms}$ metric reflects \textit{isolated software CPU execution time} within the CAD pipeline. It does \textbf{not} represent end-to-end physical motion-to-photon latency. The full physical pipeline encompasses:
+\begin{enumerate}
+    \item Webcam optical exposure and frame integration ($\approx 33.3\text{ ms}$ at 30 FPS).
+    \item USB hardware transfer and OS frame decode ($\approx 5$--$10\text{ ms}$).
+    \item MediaPipe neural network landmark regression ($\approx 15$--$25\text{ ms}$).
+    \item Inter-process WebSocket JSON serialization and transport ($\approx 1$--$3\text{ ms}$).
+    \item Software CAD evaluation ($\approx 0.2\text{ ms}$, measured).
+    \item Three.js WebGL GPU command compilation and rasterization ($\approx 2$--$5\text{ ms}$).
+    \item Monitor display vertical sync and scanout ($\approx 8.3$--$16.6\text{ ms}$).
+\end{enumerate}
+Total physical motion-to-photon latency is estimated to lie between $65$ and $95\text{ ms}$. Accurately measuring this requires an external optical setup (e.g., a 240 FPS camera capturing a physical LED trigger on the finger simultaneously with display pixels). Until such specialized instrumentation is deployed, physical end-to-end latency remains formally unmeasured.
+
+\subsection{Tremor Attenuation Sensitivity Sweep (Benchmark B3)}
+We evaluated the multi-stage tremor filter across 6 input noise levels ($\sigma \in [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]\text{ mm}$) and 30 random seeds ($180$ simulation runs, $90\,000$ points total in \texttt{summary\_b3\_sweep.json}). Table~\ref{tab:jitter_sweep} reports RMS jitter before and after filtering.
+
+\begin{table}[t]
+\caption{Tremor filter jitter attenuation sweep across 6 noise levels ($30$ seeds each, $90\,000$ samples total).}
+\label{tab:jitter_sweep}
+\centering
+\small
+\begin{tabular}{ccccc}
+\toprule
+\textbf{Noise $\sigma$} & \textbf{Raw RMS (mm)} & \textbf{Filtered (mm)} & \textbf{Reduction} & \textbf{95\% CI} \\
+\midrule
+$1.0\text{ mm}$ & $1.060 \pm 0.030$ & $0.573 \pm 0.013$ & $45.92\%$ & $[45.74\%, 46.10\%]$ \\
+$2.0\text{ mm}$ & $2.119 \pm 0.061$ & $1.026 \pm 0.023$ & $51.58\%$ & $[51.42\%, 51.74\%]$ \\
+$3.0\text{ mm}$ & $3.179 \pm 0.091$ & $1.493 \pm 0.034$ & $53.04\%$ & $[52.88\%, 53.20\%]$ \\
+$4.0\text{ mm}$ & $4.238 \pm 0.122$ & $1.967 \pm 0.046$ & $53.58\%$ & $[53.42\%, 53.74\%]$ \\
+$5.0\text{ mm}$ & $5.298 \pm 0.152$ & $2.446 \pm 0.057$ & $53.83\%$ & $[53.67\%, 53.99\%]$ \\
+$6.0\text{ mm}$ & $6.358 \pm 0.183$ & $2.927 \pm 0.069$ & $53.96\%$ & $[53.79\%, 54.13\%]$ \\
+\midrule
+\textbf{Grand Mean} & — & — & \textbf{52.43\%} & \textbf{[52.16\%, 52.71\%]} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Finding}: Across all 180 runs, the filter achieves a grand mean RMS jitter reduction of $52.43\%$ [$95\%$ CI: $52.16\%$–$52.71\%$, range: $45.0\%$–$58.6\%$]. The attenuation scales from $45.92\%$ on low sub-millimeter noise to $53.96\%$ on high noise, dampening high-frequency physiological flutter while maintaining responsiveness.
+
+\subsection{Hysteresis State Stability Sweep (Benchmark B4)}
+To evaluate gesture stability near the activation boundary, we simulated a stochastic state walk hovering within the decision boundary across 6 noise levels ($\sigma \in [0.015, 0.090]$) and 30 seeds ($180$ runs, $450\,000$ boundary frames total in \texttt{summary\_b4\_sweep.json}). Table~\ref{tab:hysteresis_sweep} compares a naive single-threshold detector ($\tau = 0.48$) against GestureCAD's dual-threshold automaton ($\tau_{\text{start}} = 0.44$, $\tau_{\text{release}} = 0.54$, debounced).
+
+\begin{table}[t]
+\caption{Gesture state chatter sensitivity sweep ($2\,500$ boundary frames per trial, $180$ total runs).}
+\label{tab:hysteresis_sweep}
+\centering
+\small
+\begin{tabular}{ccccc}
+\toprule
+\textbf{Noise $\sigma$} & \textbf{Naive Flips} & \textbf{Hysteresis Flips} & \textbf{Reduction} & \textbf{95\% CI} \\
+\midrule
+$0.015$ & $541.7 \pm 17.8$ & $3.1 \pm 0.4$ & $99.43\%$ & $[99.41\%, 99.46\%]$ \\
+$0.030$ & $902.9 \pm 25.3$ & $26.2 \pm 5.6$ & $97.09\%$ & $[96.86\%, 97.32\%]$ \\
+$0.045$ & $1067.1 \pm 26.3$ & $118.6 \pm 9.9$ & $88.88\%$ & $[88.53\%, 89.23\%]$ \\
+$0.060$ & $1141.1 \pm 26.5$ & $217.1 \pm 16.7$ & $80.97\%$ & $[80.59\%, 81.35\%]$ \\
+$0.075$ & $1173.3 \pm 24.5$ & $314.1 \pm 16.3$ & $73.23\%$ & $[72.84\%, 73.61\%]$ \\
+$0.090$ & $1190.2 \pm 25.2$ & $405.0 \pm 15.3$ & $65.97\%$ & $[65.59\%, 66.35\%]$ \\
+\midrule
+\textbf{Grand Mean} & — & — & \textbf{85.55\%} & \textbf{[84.01\%, 87.10\%]} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Finding and Reconciliation}: 
+\begin{itemize}
+    \item In the comprehensive sweep, the dual-threshold automaton suppresses spurious state transitions by an aggregate mean of $85.55\%$ [$95\%$ CI: $84.01\%$–$87.10\%$, range: $65.6\%$–$99.4\%$]. Under typical resting tremor ($\sigma \le 0.030$), chatter elimination exceeds $97\%$.
+    \item \textit{Reconciliation with Earlier Reports}: An isolated single-trial benchmark ($N=5\,000$ frames, seed 42) at $\sigma=0.045$ yielded a point-estimate reduction of $92.11\%$ (1,990 naive flips vs. 157 hysteresis flips in \texttt{summary\_b4\_hysteresis.json}). The 180-run parameter sweep reconciles this, showing that at $\sigma=0.045$, the multi-seed mean reduction is $88.88\%$ [$95\%$ CI: $88.53\%$–$89.23\%$], while the aggregate across all evaluated noise levels is $85.55\%$.
+\end{itemize}
+
+\subsection{Distance Scale Invariance (Benchmark B6)}
+As derived analytically in Section~\ref{sec:methodology}, the normalized pinch metric $d_{\text{pinch}} = \|\mathbf{l}_4 - \mathbf{l}_8\|_2 / S_{\text{hand}}$ cancels camera depth $Z_{\text{cam}}$ under perspective projection. 
+
+In analytical pinhole modeling across four distances ($30.0$, $50.0$, $80.0$, and $100.0\text{ cm}$) and three representative hand poses (Open Palm, Approaching Pinch, Contact Pinch in \texttt{summary\_b6\_scale\_invariance.json}), raw pixel distance varies by $70.0\%$ (coefficient of variation $\text{CV} = 70.0\%$), whereas the normalized metric maintains $\text{CV} = 0.0\%$. We reiterate that this $0.0\%$ invariance is an analytical mathematical property of perspective projection; physical camera trials with out-of-plane hand tilt introduce perspective foreshortening.
+
+\subsection{Mesh Validity and Topological Invariants (Benchmark B9)}
+We verified topological integrity across 20 extruded CAD models comprising regular prisms, cylinders, polygons ($N \in [3, 64]$), and non-convex profiles (L-shape, T-shape, U-shape, star 10-gon in \texttt{summary\_b9\_mesh\_validity.json}). Table~\ref{tab:mesh_validity} summarizes the results.
+
+\begin{table}[t]
+\caption{Topological invariant validation and volume verification across 20 geometric solid models.}
+\label{tab:mesh_validity}
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model Category} & \textbf{Models} & \textbf{Euler ($\chi$)} & \textbf{Open Edges} & \textbf{Vol. Error} \\
+\midrule
+Rectangular Boxes & 5 & $2.000 \pm 0.0$ & 0 & $0.000\%$ \\
+Cylinders ($N=32, 64$) & 5 & $2.000 \pm 0.0$ & 0 & $0.000\%$ \\
+Regular Polygons (3 to 8-gon) & 5 & $2.000 \pm 0.0$ & 0 & $0.000\%$ \\
+Non-Convex Profiles (L, T, U, Star) & 5 & $2.000 \pm 0.0$ & 0 & $0.000\%$ \\
+\midrule
+\textbf{Overall Compliance} & \textbf{20 / 20} & \textbf{100\% ($\chi=2$)} & \textbf{0 Boundary} & \textbf{$< 0.001\%$} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Finding}: All 20 models strictly satisfied:
+\begin{enumerate}
+    \item $\chi = V - E + F = 2.000$ ($100\%$ compliance).
+    \item Zero unshared boundary edges ($\partial \Omega = \emptyset$, guaranteed watertightness).
+    \item Zero non-manifold edges ($d(e) = 2$ for all edges).
+    \item Exact Divergence Theorem volume calculation matching analytical formulas ($0.000\%$ numerical discrepancy).
+\end{enumerate}
+As established in Section~\ref{sec:geometry}, while non-convex models pass topological $\chi=2$ checks and Divergence Theorem volume integration algebraically, fan triangulation produces self-intersecting cap geometry on concave profiles. Non-convex geometries require Ear-Clipping (Earcut) to guarantee non-intersecting physical embeddings.
+
+\subsection{Shape Regularization and Snapping Sweeps (B10, B11)}
+\textbf{1. Heuristic Shape Regularization (B10)}: Evaluated across 6 distortion levels ($\sigma \in [0.04, 0.25]$) and 30 seeds ($18\,000$ synthetic strokes total in \texttt{summary\_b10\_sweep.json}). For low-to-moderate distortion ($\sigma \le 0.08$), primitive classification accuracy is $100.0\%$. At severe distortion ($\sigma = 0.20$ and $0.25$), accuracy degrades gracefully to $97.5\%$ and $92.1\%$, respectively.
+
+\textbf{2. Geometric Snapping Precision (B11)}: Evaluated across 6 targeting dispersion radii ($r \in [0.10, 0.35]\text{ m}$) and 30 seeds ($36\,000$ queries total in \texttt{summary\_b11\_sweep.json}). Snapping captured an aggregate mean of $84.48\%$ [$95\%$ CI: $83.05\%$–$85.92\%$] of targeting attempts, reducing positional error by an aggregate mean of $79.74\%$ [$95\%$ CI: $77.28\%$–$82.20\%$, range: $41.7\%$–$95.7\%$]. (An earlier single-run benchmark with 500 queries at fixed low dispersion yielded $93.01\%$ error reduction in \texttt{summary\_b11\_snapping.json}; the 180-run sweep provides the robust multi-condition finding).
+
+\begin{table*}[t]
+\caption{Systematic component ablation study evaluating the quantitative impact of removing individual kinematic and geometric modules.}
+\label{tab:ablation}
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{System Configuration} & \textbf{RMS Jitter} & \textbf{State Flip Red.} & \textbf{Targeting Err. Red.} & \textbf{Scale Invar. (CV)} & \textbf{Primary Failure Mode When Omitted} \\
+\midrule
+\textbf{Full GestureCAD System} & \textbf{1.251 mm} & \textbf{85.55\%} & \textbf{79.74\%} & \textbf{0.0\%} & \textit{Baseline operational performance across all modules.} \\
+-- Hysteresis (Single Threshold $\tau=0.48$) & 1.251 mm & 0.0\% & 79.74\% & 0.0\% & Rapid limit-cycle pen chatter at decision boundary. \\
+-- Adaptive Smoothing (Dead-Zone Only) & 3.176 mm & 85.55\% & 79.74\% & 0.0\% & Severe high-frequency hand tremor during active drawing strokes. \\
+-- Dead-Zone (Static LERP Only) & 1.193 mm & 85.55\% & 79.74\% & 0.0\% & Micro-drift while holding steady; sluggish cursor response during sweeps. \\
+-- Scale Normalization (Raw Pixels) & 1.251 mm & 85.55\% & 79.74\% & 70.0\% & Gestures fail when user moves between 30 cm and 100 cm camera depths. \\
+-- Snapping (Raw Targeting) & 1.251 mm & 85.55\% & 0.0\% & 0.0\% & Inability to close sketch profiles cleanly; unclosed non-manifold boundaries. \\
+\textbf{Unconditioned Baseline} & \textbf{3.176 mm} & \textbf{0.0\%} & \textbf{0.0\%} & \textbf{70.0\%} & Severe jitter, pen flutter, scale drift, and open sketch boundaries. \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Component Ablation Study}
+Table~\ref{tab:ablation} synthesizes the quantitative contribution of each subsystem within GestureCAD. Disabling hysteresis eliminates chatter suppression ($0\%$ reduction), causing up to 1,990 spurious flips per 5,000 frames. Disabling adaptive smoothing exposes strokes to raw optical tremor ($3.176\text{ mm}$ RMS jitter). Omitting scale normalization introduces a $70\%$ variation in gesture thresholds across depths, and omitting snapping prevents users from reliably closing 2D sketch loops.

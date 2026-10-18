@@ -1,0 +1,68 @@
+\section{Introduction}
+\label{sec:introduction}
+
+\IEEEPARstart{S}{ince} Sutherland's seminal introduction of \textit{Sketchpad} in 1963~\cite{sutherland1963sketchpad}, Computer-Aided Design (CAD) systems have become the foundational infrastructure for mechanical engineering, aerospace fabrication, architecture, and additive manufacturing. Over the subsequent six decades, geometric modeling engines have matured from rudimentary 2D wireframe drafters to mathematically rigorous Boundary Representation (B-Rep) and Constructive Solid Geometry (CSG) kernels~\cite{mantyla1988,hoffmann1989geometric}. 
+
+However, the foundational interaction paradigm for desktop CAD has remained fundamentally anchored to the classical WIMP (Windows, Icons, Menus, Pointer) interface: three-dimensional spatial constructs are continuously translated through two-dimensional planar input peripherals (mouse, trackball, graphics tablet) and visually multiplexed across disjoint orthogonal 2D projection viewports (Top, Front, Right, and Isometric). While experienced CAD practitioners develop remarkable cognitive fluency with this projection mapping, the indirectness introduces non-trivial cognitive load for novice creators, design ideation, and rapid spatial prototyping.
+
+To bridge this spatial rift, the human-computer interaction (HCI) and computer graphics communities have extensively explored immersive spatial authoring paradigms, particularly using stereoscopic Virtual Reality (VR) and Augmented Reality (AR) headsets paired with six-degree-of-freedom ($6$-DoF) optical spatial controllers~\cite{gravitysketch,tiltbrush}. Although immersive spatial modeling systems offer intuitive spatial input, they impose distinct practical trade-offs:
+\begin{enumerate}
+    \item \textbf{Setup and Peripheral Friction}: Commercial head-mounted displays (HMDs) require significant financial investments, room-scale tracking calibration, and physical tethering or dedicated compute hardware.
+    \item \textbf{Physiological Fatigue}: Continuous mid-air arm suspension in unconstrained spatial environments rapidly induces acute musculoskeletal exhaustion, extensively documented in spatial interaction literature as ``Gorilla Arm'' syndrome~\cite{song2014air}.
+    \item \textbf{Geometric and Topological Inadequacy}: Existing spatial sketching tools predominantly generate open, non-manifold polygonal ribbons, artistic triangle soups, or loose spline bundles. While visually evocative for conceptual styling, these representations lack topological closure, surface orientation consistency, and volumetric definiteness, rendering them unusable for downstream engineering tasks such as finite element analysis (FEA), stereolithography 3D printing (STL), or CNC toolpath generation.
+\end{enumerate}
+
+Concurrently, the emergence of deep learning-based optical hand-pose estimation frameworks---notably Google MediaPipe Hands~\cite{zhang2020mediapipe,lugaresi2019mediapipe} and TensorFlow.js HandPose~\cite{ACP2020handpose}---has democratized real-time articulated 3D hand tracking on commodity monocular RGB webcams, requiring zero specialized infrared sensors (e.g., Leap Motion~\cite{leapmotion2013}) or wearable markers. 
+
+Nevertheless, adapting raw landmark coordinate streams to precision CAD authoring presents formidable signal-processing and systems-engineering hurdles:
+\begin{itemize}
+    \item \textbf{High-Frequency Physiological Tremor}: Inherent involuntary neuromuscular micro-tremor ($\sigma \approx 1$--$5\text{ mm}$) and optical landmark localization noise produce severe spatial jitter, preventing straight-line authoring and accurate vertex closure.
+    \item \textbf{Distance-Dependent Perspective Scaling}: In monocular pinhole optics, apparent hand pixel dimensions vary inversely with camera distance ($Z_{\text{cam}}$), causing fixed pixel-distance gesture thresholds to fail as users naturally adjust their seating position.
+    \item \textbf{Limit-Cycle Decision Boundary Chatter}: When a user's hand hovers near the activation threshold of a discrete gesture (e.g., pinch-to-draw), signal noise triggers rapid, uncontrolled state flips between drawing and idle states.
+    \item \textbf{Client-Side Web Performance Bottlenecks}: Modern web applications built on declarative UI component trees (e.g., React) incur garbage-collection pauses and Virtual DOM reconciliation overhead when processing high-frequency spatial tracking streams ($30$--$60\text{ Hz}$).
+\end{itemize}
+
+\begin{figure}[t]
+    \centering
+    \fbox{%
+        \parbox[c][5.2cm][c]{0.92\linewidth}{%
+            \centering\small\sffamily
+            \textbf{Figure 1: Application Overview Placeholder}\\
+            \vspace{0.3cm}
+            \textit{Intended Screenshot:}\\
+            GestureCAD user interface displaying the interactive 3D WebGL viewport,\\
+            active working plane grid, real-time hand-tracking video overlay with skeletal joints,\\
+            continuous drawing cursor, gesture classification state banner, and CAD tools.\\
+            \vspace{0.3cm}
+            \footnotesize Expected file: \texttt{paper/figures/fig1_overview.png}
+        }%
+    }
+    \caption{The GestureCAD interactive interface. The system captures monocular webcam input, performs kinematic conditioning to filter hand tremor, and renders topologically validated solid geometry in an interactive WebGL viewport.}
+    \label{fig:overview}
+\end{figure}
+
+To address these challenges, we present \textbf{GestureCAD}, a contactless, web-based 3D CAD modeling application and swept-geometry engine driven entirely by monocular hand gestures. GestureCAD couples a Python-based edge vision microservice with a Three.js/WebGL client-side rendering architecture, transforming natural hand gestures into precision geometric construction commands on standard desktop hardware without proprietary depth sensors.
+
+\subsection{Research Objectives and Scope}
+This paper does not claim to introduce a new mathematical solid modeling paradigm or a novel machine-learning architecture for hand pose estimation. Rather, this work addresses a practical systems-engineering problem: \textit{How can commodity monocular hand tracking be effectively conditioned, stabilized, and coupled to an in-browser solid geometry pipeline to achieve interactive, topologically verified 3D modeling without specialized hardware?}
+
+The specific engineering scope encompasses:
+\begin{enumerate}
+    \item Formulating an integrated kinematic conditioning pipeline tailored to spatial CAD input, including anatomical scale normalization, dual-threshold hysteresis debouncing, dead-zone gating, and dynamic tremor smoothing.
+    \item Designing a decoupled client-edge architecture that streams tracking telemetry over WebSockets and updates WebGL vertex buffers directly in memory, bypassing Virtual DOM reconciliation.
+    \item Implementing direct-manipulation linear extrusion and rotational sweeping engines that generate polyhedral meshes with automated topological invariant checks ($\chi = 2$) and Divergence Theorem volume calculations.
+    \item Establishing a surface-attached local coordinate mapping pipeline ($SO(3)$ orthonormal frames) to support multi-surface sketch-on-face interactions.
+    \item Conducting reproducible empirical benchmarks and parameter sweeps evaluating latency, noise attenuation, state stability, and geometric validity.
+\end{enumerate}
+
+\subsection{Summary of Contributions}
+The specific contributions of this work are:
+\begin{itemize}
+    \item \textbf{An Integrated Kinematic Conditioning Pipeline}: An anthropometrically normalized pinch metric invariant to camera distance under perspective projection ($0.0\%$ CV pinhole formulation), combined with dual-threshold hysteresis reducing boundary state chatter by a mean of $85.55\%$ [$95\%$ CI: $84.01\%$–$87.10\%$] across 180 swept trials, and dynamic smoothing reducing RMS cursor tremor by $52.43\%$ [$95\%$ CI: $52.16\%$–$52.71\%$].
+    \item \textbf{A Decoupled Client-Edge WebCAD System}: An architecture that bridges a multi-threaded edge computer vision capture loop with a zero-reconciliation Three.js rendering engine, executing software CAD operations in $0.1994\text{ ms}$ mean CPU time per frame on host hardware.
+    \item \textbf{Swept Polyhedral Geometry with Topological Invariant Verification}: A custom mesh solid generator supporting linear extrusion, rotational sweeping (with Rodrigues' rotation and on-axis vertex welding), exact Divergence Theorem volumetric integration, and automated verification of closed 2-manifold invariants ($\chi = 2$) for genus-0 solids, with explicit characterization of cap triangulation constraints on concave profiles.
+    \item \textbf{Multi-Surface Coordinate Mapping}: An orthonormal frame derivation pipeline $\mathbf{R} \in SO(3)$ enabling dynamic sketch-plane attachment on planar polyhedron faces and cylindrical boundaries.
+    \item \textbf{A Reproducible Benchmarking Suite}: An open-source empirical evaluation suite classifying benchmarks into physical real-system measurements, stochastic parameter sweeps with 95\% confidence intervals, and analytical derivations.
+\end{itemize}
+
+The remainder of this paper is organized as follows: Section~\ref{sec:related_work} situates GestureCAD within prior literature on vision-based interaction, spatial CAD, and web geometry engines. Section~\ref{sec:architecture} describes the system architecture and communication pipeline. Section~\ref{sec:methodology} presents the mathematical formulation of kinematic conditioning and coordinate projection. Section~\ref{sec:geometry} details geometric construction, validation, and face coordinate frames. Section~\ref{sec:experiments} reports experimental results and parameter sweeps. Section~\ref{sec:discussion} analyzes engineering trade-offs and threats to validity. Section~\ref{sec:limitations} explicitly documents system limitations, and Section~\ref{sec:conclusion} concludes with future research directions.

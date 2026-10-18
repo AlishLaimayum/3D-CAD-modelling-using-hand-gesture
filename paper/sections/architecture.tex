@@ -1,0 +1,58 @@
+\section{System Architecture}
+\label{sec:architecture}
+
+GestureCAD adopts a decoupled client-edge architecture designed to balance real-time computer vision inference throughput with interactive 60~FPS graphics rendering. As illustrated in Figure~\ref{fig:architecture}, the system separates high-frequency optical tracking from the interactive geometric modeling client across a lightweight local WebSocket network layer.
+
+\begin{figure*}[t]
+    \centering
+    \fbox{%
+        \parbox[c][5.8cm][c]{0.92\linewidth}{%
+            \centering\small\sffamily
+            \textbf{Figure 2: System Architecture Diagram Placeholder}\\
+            \vspace{0.3cm}
+            \textit{Intended Diagram:}\\
+            Detailed system topology showing dataflow across the two primary tiers:\\
+            (1) \textbf{Edge Vision Service (Python)}: Commodity Webcam $\to$ OpenCV Capture Thread $\to$ MediaPipe Hands Inference (21 Landmarks) $\to$ Kinematic Signal Conditioning (Anatomical Normalization, Hysteresis FSM, Deadzone Gating, EMA) $\to$ JSON Telemetry Serializer $\to$ FastAPI WebSocket Server.\\
+            (2) \textbf{WebSocket Transport}: Full-duplex JSON streaming on \texttt{ws://localhost:8000/ws/tracking}.\\
+            (3) \textbf{Browser CAD Engine (React 18 + Three.js)}: Dual-path execution splitting into:\\
+            -- \textit{High-Frequency Render Path}: \texttt{useFrame()} direct typed array (\texttt{Float32Array}) buffer mutations bypassing Virtual DOM $\to$ WebGL GPU Viewport;\\
+            -- \textit{Transactional CAD State Path}: Ray-Plane Unprojection $\to$ Snapping \& Regularization $\to$ Zustand Store $\to$ Command History (Undo/Redo) $\to$ Geometry Engine (\texttt{ExtrusionEngine}, \texttt{RevolveEngine}, \texttt{SolidMesh}, \texttt{FaceEnumerator}) $\to$ Exporters (OBJ, DXF, STL, JSON).\\
+            \vspace{0.3cm}
+            \footnotesize Expected file: \texttt{paper/figures/fig2_architecture.png}
+        }%
+    }
+    \caption{The decoupled client-edge architecture of GestureCAD. Real-time vision processing executes in a dedicated Python background process, while the interactive CAD application and WebGL rendering engine execute client-side in the web browser, communicating via local WebSockets.}
+    \label{fig:architecture}
+\end{figure*}
+
+\subsection{Edge Vision Microservice}
+The vision tracking subsystem is implemented as a multi-threaded Python 3.10+ service utilizing OpenCV for video frame acquisition and Google MediaPipe Hands for articulated skeletal inference. The subsystem executes an asynchronous event loop powered by FastAPI and Uvicorn:
+
+\begin{enumerate}
+    \item \textbf{Asynchronous Frame Acquisition}: A dedicated capture thread polls the host video device (defaulting to camera index 0) via \texttt{cv2.VideoCapture}. In empirical testing on host hardware, the acquisition loop achieved an average capture rate of $26.68\text{ FPS}$ with a standard $720\text{p}$ ($1280 \times 720$) resolution sensor.
+    \item \textbf{Hand Pose Estimation}: Each captured frame is converted from BGR to RGB color space and processed by MediaPipe Hands configured with \texttt{static\_image\_mode=False}, \texttt{max\_num\_hands=1}, and \texttt{model\_complexity=1}. The neural network outputs 21 landmarks in normalized camera space $\mathbf{l}_i = (x_i, y_i, z_i) \in [0, 1]^3$, where $x$ and $y$ represent image plane coordinates and $z$ represents relative depth relative to the wrist joint.
+    \item \textbf{Kinematic Feature Extraction}: The raw landmarks are ingested by the \texttt{GestureRecognizer} module, which evaluates anatomical scale baselines, joint angles, finger extension ratios, and the normalized pinch metric (formally derived in Section~\ref{sec:methodology}).
+    \item \textbf{JSON Telemetry Serialization}: The resulting state is packaged into a compact JSON telemetry frame containing the discrete gesture state (\texttt{IDLE}, \texttt{OPEN\_PALM}, \texttt{FIST}, \texttt{PINCH}, \texttt{PEACE}), the toggle lock state, 2D filtered cursor coordinates, palm roll/swipe angles, the normalized pinch ratio, and high-resolution Unix timestamps. Telemetry frames are broadcast over a local WebSocket server at \texttt{ws://localhost:8000/ws/tracking}.
+\end{enumerate}
+
+\subsection{Browser CAD Client and Dual-Path Rendering}
+The client-side modeling interface is implemented in React 18, utilizing Three.js and React Three Fiber (R3F) for WebGL scene graph management.
+
+A critical design challenge in browser-based spatial interaction is handling streaming coordinate data without inducing frame drops. When high-frequency spatial streams ($30$--$60\text{ Hz}$) are routed through declarative React component state, the frequent state updates trigger continuous Virtual DOM reconciliation, leading to heap thrashing and garbage collection (GC) stutter.
+
+To eliminate this bottleneck, GestureCAD implements a \textbf{dual-path execution architecture}:
+
+\begin{enumerate}
+    \item \textbf{High-Frequency Render Path (Bypassing Virtual DOM)}: Continuous tracking data (cursor coordinates, real-time stroke preview lines, and plane rotation handles) are maintained in mutable JavaScript references (\texttt{useRef}) rather than reactive component state. In the Three.js render loop (\texttt{useFrame}), the engine mutates the underlying WebGL \texttt{BufferGeometry.attributes.position.array} (\texttt{Float32Array}) directly in GPU-allocated memory and sets \texttt{needsUpdate = true}. This direct buffer mutation ensures continuous 60 FPS viewport feedback with zero Virtual DOM reconciliation overhead during active sketching.
+    \item \textbf{Transactional CAD State Path (Command Pattern)}: Discrete geometric operations---such as committing a finished 2D profile, extruding a solid, executing a face selection, or performing Undo/Redo---are treated as discrete transactions. These operations are dispatched to a centralized Zustand state store and managed via a formal Command Pattern (\texttt{CommandManager.js}). Each command maintains inverse operations for deterministic Undo/Redo reversibility, updating the scene graph only upon transaction completion.
+\end{enumerate}
+
+\subsection{Coordinate Spaces and Transformation Pipeline}
+GestureCAD coordinates geometric interactions across four distinct coordinate reference frames:
+\begin{itemize}
+    \item \textbf{Camera Normalized Space $\mathcal{S}_{\text{cam}}$}: Hand landmarks $\mathbf{l}_i \in [0, 1]^2$ normalized to webcam image dimensions.
+    \item \textbf{Normalized Device Coordinates (NDC) $\mathcal{S}_{\text{ndc}}$}: Viewport screen coordinates mapped to $[-1, 1]^3$ for WebGL camera projection.
+    \item \textbf{World Space $\mathcal{S}_{\text{world}}$}: Global three-dimensional Cartesian coordinate frame $\mathbb{R}^3$ wherein Three.js scene cameras, lighting, and instantiated CAD objects reside.
+    \item \textbf{Local Working-Plane Space $\mathcal{S}_{\text{plane}}$}: 2D parametric coordinate space $(u, v) \in \mathbb{R}^2$ established on an active working plane (XY, YZ, XZ) or dynamically attached to an existing polyhedron face via an orthonormal transformation $\mathbf{R} \in SO(3)$.
+\end{itemize}
+The mathematical mappings connecting these coordinate spaces are detailed in the subsequent section.

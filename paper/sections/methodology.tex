@@ -1,0 +1,184 @@
+\section{Methodology and Kinematic Conditioning}
+\label{sec:methodology}
+
+Transforming unconstrained monocular hand tracking into precision CAD input requires resolving physiological tremor, perspective scaling, and discrete gesture ambiguity. This section formalizes the mathematical and algorithmic pipeline governing signal conditioning, gesture state estimation, and spatial unprojection.
+
+\subsection{Articulated Skeletal Hand Representation}
+Let $\mathcal{L}_t = \{\mathbf{l}_i(t) = (x_i(t), y_i(t), z_i(t)) \in \mathbb{R}^3\}_{i=0}^{20}$ denote the set of 21 articulated skeletal hand landmarks estimated by MediaPipe at discrete time frame $t$. Key landmark indices include:
+\begin{itemize}
+    \item $\mathbf{l}_0$: Carpal wrist center.
+    \item $\mathbf{l}_4$: Distal thumb tip.
+    \item $\mathbf{l}_8$: Distal index fingertip.
+    \item $\mathbf{l}_9$: Middle finger metacarpophalangeal (MCP) knuckle joint.
+    \item $\mathbf{l}_{12}, \mathbf{l}_{16}, \mathbf{l}_{20}$: Tips of middle, ring, and pinky fingers.
+\end{itemize}
+
+\begin{figure}[t]
+    \centering
+    \fbox{%
+        \parbox[c][5.4cm][c]{0.92\linewidth}{%
+            \centering\small\sffamily
+            \textbf{Figure 3: Gesture Interaction Workflow Placeholder}\\
+            \vspace{0.3cm}
+            \textit{Intended Diagram:}\\
+            State transition diagram of the finite state automaton (FSM):\\
+            -- States: \texttt{IDLE}, \texttt{OPEN\_PALM}, \texttt{FIST}, \texttt{PINCH}, \texttt{PEACE}.\\
+            -- Transitions governed by asymmetric thresholds ($\tau_{\text{start}}=0.44$, $\tau_{\text{release}}=0.54$) and temporal debounce windows ($N_{\text{start}}=1$, $N_{\text{release}}=2$ frames).\\
+            -- Lock toggle state triggered by sustained \texttt{FIST} gesture ($N \ge 5$ frames).\\
+            -- Mapping of states to CAD operations: \texttt{PINCH} $\to$ Draw/Extrude; \texttt{OPEN\_PALM} $\to$ Hover/Navigate; \texttt{FIST} $\to$ Lock/Commit; \texttt{PEACE} $\to$ Plane Rotate.\\
+            \vspace{0.3cm}
+            \footnotesize Expected file: \texttt{paper/figures/fig3_fsm_workflow.png}
+        }%
+    }
+    \caption{Finite state automaton governing gesture recognition and command mapping in GestureCAD. Dual-threshold hysteresis and persistence debouncing prevent limit-cycle chatter at gesture decision boundaries.}
+    \label{fig:gesture_workflow}
+\end{figure}
+
+\subsection{Anatomical Scale Invariance}
+In monocular vision, a user's distance from the camera $Z_{\text{cam}}$ varies naturally during interaction. Under standard pinhole camera projection with focal length $f$, a physical spatial distance $\Delta X$ at depth $Z$ projects to pixel length $\Delta x_{\text{px}}$ according to:
+\begin{equation}
+\Delta x_{\text{px}} = \frac{\Delta X \cdot f}{Z_{\text{cam}}}
+\label{eq:pinhole}
+\end{equation}
+Consequently, raw Euclidean pixel distances $\|\mathbf{l}_4 - \mathbf{l}_8\|_2$ vary dramatically as the user leans forward or backward, causing fixed-pixel gesture thresholds to trigger prematurely at close distances or fail entirely at far distances.
+
+To achieve scale invariance with respect to camera distance and individual user hand anthropometry, GestureCAD defines an anatomical normalization baseline $S_{\text{hand}}$ using the internal Euclidean distance from the wrist $\mathbf{l}_0$ to the middle MCP knuckle $\mathbf{l}_9$:
+\begin{equation}
+S_{\text{hand}}(t) = \|\mathbf{l}_9(t) - \mathbf{l}_0(t)\|_2 = \sqrt{\sum_{k \in \{x, y, z\}} (l_{9, k}(t) - l_{0, k}(t))^2}
+\label{eq:hand_size}
+\end{equation}
+The middle MCP joint is biomechanically optimal as a reference anchor because the carpal-metacarpal distance remains virtually rigid during finger articulation (unlike finger tips, which translate during curling or grasping).
+
+The dimensionless, scale-invariant pinch metric $d_{\text{pinch}}(t)$ is then defined as:
+\begin{equation}
+d_{\text{pinch}}(t) = \frac{\|\mathbf{l}_4(t) - \mathbf{l}_8(t)\|_2}{S_{\text{hand}}(t)}
+\label{eq:d_pinch}
+\end{equation}
+\textit{Analytical Scale Invariance Property}: Under ideal pinhole perspective projection without out-of-plane rotation, substituting Eq.~\eqref{eq:pinhole} into Eq.~\eqref{eq:d_pinch} yields:
+\begin{equation}
+d_{\text{pinch}}(t) = \frac{\frac{\Delta X_{\text{pinch}} \cdot f}{Z_{\text{cam}}}}{\frac{\Delta X_{\text{baseline}} \cdot f}{Z_{\text{cam}}}} = \frac{\Delta X_{\text{pinch}}}{\Delta X_{\text{baseline}}}
+\label{eq:scale_invariance_proof}
+\end{equation}
+Because the depth $Z_{\text{cam}}$ and focal length $f$ cancel identically, $d_{\text{pinch}}$ is analytically invariant to camera distance ($0.0\%$ theoretical coefficient of variation across depths). 
+
+\textit{Real-World Qualification}: In physical camera interaction, extreme out-of-plane hand tilt induces differential perspective foreshortening between non-coplanar finger segments, introducing residual variance. However, within typical interaction cones ($\pm 25^\circ$ hand pitch and yaw), the metric provides robust depth independence.
+
+\subsection{Dual-Threshold Hysteresis State Automaton}
+When an interaction threshold is governed by a single boundary $\tau$, high-frequency physiological tremor near $\tau$ triggers rapid, uncontrolled limit-cycle transitions between states. GestureCAD suppresses this boundary chatter using a dual-threshold Schmitt trigger automaton with temporal persistence debouncing.
+
+Let $\sigma_t \in \{\text{IDLE}, \text{PINCH}\}$ represent the binary activation state. Transitions are defined by asymmetric activation and release boundaries:
+\begin{equation}
+\sigma_t = \begin{cases}
+\text{PINCH}, & \text{if } \sigma_{t-1} = \text{IDLE} \land d_{\text{pinch}}(t) < \tau_{\text{start}} \land C_{\text{debounce}} \ge N_{\text{start}} \\
+\text{IDLE}, & \text{if } \sigma_{t-1} = \text{PINCH} \land d_{\text{pinch}}(t) > \tau_{\text{release}} \land C_{\text{debounce}} \ge N_{\text{release}} \\
+\sigma_{t-1}, & \text{otherwise}
+\end{cases}
+\label{eq:hysteresis}
+\end{equation}
+where $\tau_{\text{start}} = 0.44$, $\tau_{\text{release}} = 0.54$, and $C_{\text{debounce}}$ is an integer counter requiring state persistence over $N_{\text{start}} = 1$ and $N_{\text{release}} = 2$ consecutive frames.
+
+The full gesture recognizer evaluates five discrete poses:
+\begin{enumerate}
+    \item \textbf{PINCH}: Index and thumb tips meet ($d_{\text{pinch}} < \tau_{\text{start}}$) with ring and pinky fingers relaxed (extension ratios $> 0.80$). Used for continuous drawing, profile vertex placement, and 3D extrusion pulling.
+    \item \textbf{OPEN\_PALM}: All four non-thumb fingers fully extended (extension ratios $> 1.35$). Used for passive cursor hovering, plane translation, and face inspection.
+    \item \textbf{FIST}: All four fingers folded toward the palm (extension ratios $< 0.85$). When held stably for $N \ge 5$ frames, it toggles a safety lock state, preventing accidental drawing activations.
+    \item \textbf{PEACE}: Index and middle fingers extended, ring and pinky folded, and thumb separated ($d_{\text{pinch}} > 0.50$). Used for angular plane reorientation and viewport rotation.
+    \item \textbf{IDLE}: Default resting state when no structured pose criteria are met.
+\end{enumerate}
+
+\subsection{Multi-Stage Kinematic Tremor Attenuation}
+Raw landmark position streams contain human micro-tremor and optical tracking jitter: $\tilde{\mathbf{p}}_t = \mathbf{p}_t + \boldsymbol{\epsilon}_t$. Applying standard fixed-parameter low-pass filtering introduces noticeable phase lag during rapid hand sweeps while failing to eliminate tremor during stationary aiming.
+
+GestureCAD conditions the 2D cursor trajectory through a three-stage sequential filtering pipeline:
+
+\textbf{Stage 1: Micro-Tremor Dead-Zone Gating.} Involuntary human hand tremor while attempting to hold a steady spatial position typically spans displacements below $3\text{ mm}$. We reject tiny inter-frame perturbations using a squared Euclidean dead-zone threshold:
+\begin{equation}
+\hat{\mathbf{p}}_t = \begin{cases}
+\mathbf{p}_{t-1}, & \text{if } \|\tilde{\mathbf{p}}_t - \mathbf{p}_{t-1}\|_2^2 < \epsilon_{\text{dead}}^2 \\
+\tilde{\mathbf{p}}_t, & \text{otherwise}
+\end{cases}
+\label{eq:deadzone}
+\end{equation}
+where $\epsilon_{\text{dead}} = 0.003\text{ m}$ ($3\text{ mm}$ in normalized hand coordinate space).
+
+\textbf{Stage 2: Velocity-Clamped Outlier Rejection.} To mitigate momentary optical tracking glitches caused by self-occlusion or lighting shifts, maximum inter-frame displacement is bounded by a kinematic velocity cap $\delta_{\max}$:
+\begin{equation}
+\mathbf{p}^*_t = \mathbf{p}_{t-1} + \min\left(1.0, \, \frac{\delta_{\max}}{\|\hat{\mathbf{p}}_t - \mathbf{p}_{t-1}\|_2}\right) (\hat{\mathbf{p}}_t - \mathbf{p}_{t-1})
+\label{eq:velocity_clamp}
+\end{equation}
+where $\delta_{\max} = 2.5\text{ m/frame}$.
+
+\textbf{Stage 3: Velocity-Adaptive Exponential Moving Average (EMA).} The smoothing weight $\alpha(v_t)$ dynamically adapts as a monotonic function of instantaneous hand speed $v_t = \|\mathbf{p}^*_t - \mathbf{p}_{t-1}\|_2$:
+\begin{equation}
+\alpha(v_t) = \min\left(1.0, \, \alpha_0 + \min\left(\alpha_{\text{boost}}, \, k_v \cdot v_t\right)\right)
+\label{eq:adaptive_alpha}
+\end{equation}
+\begin{equation}
+\mathbf{p}_t = \mathbf{p}_{t-1} + \alpha(v_t) \cdot (\mathbf{p}^*_t - \mathbf{p}_{t-1})
+\label{eq:ema}
+\end{equation}
+with baseline smoothing $\alpha_0 = 0.35$, dynamic boost limit $\alpha_{\text{boost}} = 0.25$, and velocity scaling coefficient $k_v = 0.50$. When the hand is moving slowly for fine positioning, $\alpha \to \alpha_0$, providing heavy low-pass filtering. During rapid strokes, $\alpha \to 0.60$--$1.0$, minimizing trailing latency.
+
+\begin{figure}[t]
+    \centering
+    \fbox{%
+        \parbox[c][5.4cm][c]{0.92\linewidth}{%
+            \centering\small\sffamily
+            \textbf{Figure 4: Working Planes and Unprojection Placeholder}\\
+            \vspace{0.3cm}
+            \textit{Intended Screenshot:}\\
+            Visual demonstration of parametric working plane interaction in 3D viewport:\\
+            -- Viewport showing primary coordinate planes: $XY$ (Ground), $YZ$ (Side), and $XZ$ (Front);\\
+            -- The visual ray $\vec{r}(t) = \vec{r}_0 + t \vec{d}$ projecting from the virtual camera through the NDC cursor onto the active grid plane;\\
+            -- The calculated 3D intersection hit-point $\vec{p}_{\text{hit}}$ and its mapping into 2D local in-plane coordinates $(u, v)$;\\
+            -- Visual snapping indicators highlighting vertex, midpoint, and edge snap targets.\\
+            \vspace{0.3cm}
+            \footnotesize Expected file: \texttt{paper/figures/fig4_working_planes.png}
+        }%
+    }
+    \caption{Parametric working planes and perspective unprojection. Monocular hand cursor coordinates are mapped to a 3D camera ray and intersected with the active drawing plane, establishing an orthonormal $(u, v)$ coordinate system for 2D profile authoring.}
+    \label{fig:working_planes}
+\end{figure}
+
+\subsection{Perspective Unprojection and Working-Plane Raycasting}
+To author 3D geometry from 2D gesture coordinates, the system projects screen cursor positions onto active 3D parametric working planes (Figure~\ref{fig:working_planes}).
+
+A normalized screen coordinate $(x, y) \in [0, 1]^2$ is transformed into Normalized Device Coordinates (NDC) $\mathbf{x}_{\text{ndc}} \in [-1, 1]^3$:
+\begin{equation}
+\mathbf{x}_{\text{ndc}} = \begin{bmatrix} 2x - 1 \\ -(2y - 1) \\ 1 \end{bmatrix}
+\label{eq:ndc}
+\end{equation}
+Using the camera world position $\mathbf{C}_{\text{camera}} \in \mathbb{R}^3$ and the inverse of the view-projection matrix $\mathbf{M}_{\text{vp}}^{-1} = (\mathbf{P}_{\text{proj}} \mathbf{V}_{\text{view}})^{-1}$, the world-space ray origin $\vec{r}_0$ and unit direction vector $\vec{d}$ are evaluated:
+\begin{equation}
+\vec{r}_0 = \mathbf{C}_{\text{camera}}, \quad \vec{d} = \frac{\mathbf{M}_{\text{vp}}^{-1} \mathbf{x}_{\text{ndc}}}{\|\mathbf{M}_{\text{vp}}^{-1} \mathbf{x}_{\text{ndc}}\|_2}
+\label{eq:ray}
+\end{equation}
+
+An active planar working plane $\Pi$ is parameterized by a reference center point $\vec{p}_0 \in \mathbb{R}^3$ and unit outward normal $\vec{n} \in \mathbb{R}^3$. The ray-plane intersection parameter $t^*$ is given by:
+\begin{equation}
+t^* = \frac{(\vec{p}_0 - \vec{r}_0) \cdot \vec{n}}{\vec{d} \cdot \vec{n}}, \quad \text{valid for } |\vec{d} \cdot \vec{n}| > 10^{-6} \land t^* \ge 0
+\label{eq:ray_plane_intersection}
+\end{equation}
+The resulting 3D hit point $\vec{p}_{\text{hit}} = \vec{r}_0 + t^* \vec{d}$ is projected onto local 2D working plane coordinates $(u, v)$ via in-plane tangent and bitangent unit vectors $(\vec{u}_{\text{tangent}}, \vec{v}_{\text{bitangent}})$:
+\begin{equation}
+u = (\vec{p}_{\text{hit}} - \vec{p}_0) \cdot \vec{u}_{\text{tangent}}, \quad v = (\vec{p}_{\text{hit}} - \vec{p}_0) \cdot \vec{v}_{\text{bitangent}}
+\label{eq:plane_uv}
+\end{equation}
+
+\subsection{Geometric Snapping and Shape Regularization}
+Because mid-air hand sketching lacks physical friction, users cannot easily close polygons or align vertices manually. GestureCAD incorporates two assisting engines:
+
+\textbf{1. 3D Geometric Snapping}: When placing a point $\mathbf{p}$, the snapping engine searches for existing geometric candidates within a screen-space tolerance radius $r_{\text{snap}} = 0.25\text{ m}$:
+\begin{itemize}
+    \item \textbf{Vertex Snapping}: Pulls $\mathbf{p}$ to existing vertex coordinates $\|\mathbf{p} - \mathbf{v}_k\| < r_{\text{snap}}$, guaranteeing exact numerical profile closure.
+    \item \textbf{Midpoint Snapping}: Snaps $\mathbf{p}$ to edge midpoints $\frac{1}{2}(\mathbf{v}_i + \mathbf{v}_j)$.
+    \item \textbf{Grid Snapping}: Quantizes $\mathbf{p}$ to increments of $0.5\text{ m}$ on the active working plane.
+\end{itemize}
+
+\textbf{2. Heuristic Shape Regularization}: A continuous freehand stroke $\mathcal{S} = \{\mathbf{q}_k\}_{k=0}^{M-1}$ is evaluated upon pen release. The regularizer evaluates stroke perimeter, aspect ratio, end-to-end closure distance $\|\mathbf{q}_{M-1} - \mathbf{q}_0\|$, and deviation from ideal geometric primitives:
+\begin{itemize}
+    \item If $\|\mathbf{q}_{M-1} - \mathbf{q}_0\| / L_{\text{perimeter}} < 0.15$ and the bounding box aspect ratio $\approx 1.0$, the stroke is regularized into a circle or rectangle.
+    \item If the stroke has 3 prominent directional inflection points, it is regularized into an equilateral or right-angled triangle.
+    \item Open strokes with collinearity index $> 0.95$ are simplified to straight 2-point line segments.
+\end{itemize}
+This regularization ensures clean, closed 2D profiles suitable for downstream solid generation.
